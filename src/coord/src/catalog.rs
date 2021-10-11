@@ -735,7 +735,7 @@ impl Catalog {
                                 .into_iter()
                                 .map(MirScalarExpr::Column)
                                 .collect(),
-                            create_sql: super::coord::index_sql(
+                            create_sql: super::handle::index_sql(
                                 index_name,
                                 name,
                                 &log.variant.desc(),
@@ -751,7 +751,7 @@ impl Catalog {
                 Builtin::Table(table) => {
                     let index_name = format!("{}_primary_idx", table.name);
                     let index_columns = table.desc.typ().default_key();
-                    let index_sql = super::coord::index_sql(
+                    let index_sql = super::handle::index_sql(
                         index_name.clone(),
                         name.clone(),
                         &table.desc,
