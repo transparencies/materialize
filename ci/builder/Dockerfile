@@ -10,7 +10,7 @@
 # Build a cross-compiling toolchain that targets the oldest version of Linux
 # that we support.
 
-FROM ubuntu:focal-20210921 AS crosstool
+FROM ubuntu:focal-20211006 AS crosstool
 
 WORKDIR /scratch
 
@@ -59,7 +59,7 @@ RUN DEFCONFIG=crosstool.defconfig ct-ng defconfig \
 # Import the cross-compiling toolchain into a fresh image, omitting the
 # dependencies that we needed to actually build the toolchain.
 
-FROM ubuntu:focal-20210921
+FROM ubuntu:focal-20211006
 
 WORKDIR /workdir
 
