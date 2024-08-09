@@ -50,8 +50,10 @@ use mz_sql_parser::ast::{
     WithOptionValue,
 };
 use mz_storage_types::connections::inline::ReferencedConnection;
-use mz_storage_types::sinks::{S3SinkFormat, SinkEnvelope, StorageSinkConnection};
-use mz_storage_types::sources::{SourceDesc, Timeline};
+use mz_storage_types::sinks::{
+    S3SinkFormat, SinkEnvelope, SinkPartitionStrategy, StorageSinkConnection,
+};
+use mz_storage_types::sources::{SourceDesc, SourceExportDetails, Timeline};
 use proptest_derive::Arbitrary;
 use serde::{Deserialize, Serialize};
 
@@ -1332,6 +1334,7 @@ pub enum DataSourceDesc {
     IngestionExport {
         ingestion_id: GlobalId,
         external_reference: UnresolvedItemName,
+        details: SourceExportDetails,
     },
     /// Receives data from the source's reclocking/remapping operations.
     Progress,
@@ -1467,6 +1470,7 @@ pub struct Sink {
     pub create_sql: String,
     pub from: GlobalId,
     pub connection: StorageSinkConnection<ReferencedConnection>,
+    pub partition_strategy: SinkPartitionStrategy,
     // TODO(guswynn): this probably should just be in the `connection`.
     pub envelope: SinkEnvelope,
     pub version: u64,
@@ -1643,28 +1647,15 @@ impl Default for PlanClusterOption {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct AlterClusterPlanStrategy {
-    pub condition: AlterClusterStrategyCondition,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AlterClusterStrategyCondition {
+pub enum AlterClusterPlanStrategy {
     None,
     For(Duration),
 }
 
-impl AlterClusterStrategyCondition {
+impl AlterClusterPlanStrategy {
     pub fn is_none(&self) -> bool {
         matches!(self, Self::None)
-    }
-}
-
-impl Default for AlterClusterPlanStrategy {
-    fn default() -> Self {
-        Self {
-            condition: AlterClusterStrategyCondition::None,
-        }
     }
 }
 
@@ -1672,13 +1663,9 @@ impl TryFrom<ClusterAlterOptionExtracted> for AlterClusterPlanStrategy {
     type Error = PlanError;
 
     fn try_from(value: ClusterAlterOptionExtracted) -> Result<Self, Self::Error> {
-        Ok(Self {
-            condition: match value.wait {
-                Some(ClusterAlterOptionValue::For(v)) => {
-                    AlterClusterStrategyCondition::For(Duration::try_from_value(v)?)
-                }
-                None => AlterClusterStrategyCondition::None,
-            },
+        Ok(match value.wait {
+            Some(ClusterAlterOptionValue::For(d)) => Self::For(Duration::try_from_value(d)?),
+            None => Self::None,
         })
     }
 }

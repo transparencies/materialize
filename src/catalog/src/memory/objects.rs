@@ -50,9 +50,10 @@ use mz_sql::rbac;
 use mz_sql::session::vars::OwnedVarInput;
 use mz_storage_client::controller::IntrospectionType;
 use mz_storage_types::connections::inline::ReferencedConnection;
-use mz_storage_types::sinks::{SinkEnvelope, StorageSinkConnection};
+use mz_storage_types::sinks::{SinkEnvelope, SinkPartitionStrategy, StorageSinkConnection};
 use mz_storage_types::sources::{
-    GenericSourceConnection, SourceConnection, SourceDesc, SourceEnvelope, Timeline,
+    GenericSourceConnection, SourceConnection, SourceDesc, SourceEnvelope, SourceExportDetails,
+    Timeline,
 };
 use once_cell::sync::Lazy;
 use serde::ser::SerializeSeq;
@@ -565,6 +566,7 @@ pub enum DataSourceDesc {
     IngestionExport {
         ingestion_id: GlobalId,
         external_reference: UnresolvedItemName,
+        details: SourceExportDetails,
     },
     /// Receives introspection data from an internal system
     Introspection(IntrospectionType),
@@ -635,6 +637,7 @@ impl Source {
                 mz_sql::plan::DataSourceDesc::IngestionExport {
                     ingestion_id,
                     external_reference,
+                    details,
                 } => {
                     assert!(
                         plan.in_cluster.is_none(),
@@ -643,6 +646,7 @@ impl Source {
                     DataSourceDesc::IngestionExport {
                         ingestion_id,
                         external_reference,
+                        details,
                     }
                 }
                 mz_sql::plan::DataSourceDesc::Webhook {
@@ -807,6 +811,7 @@ pub struct Sink {
     pub connection: StorageSinkConnection<ReferencedConnection>,
     // TODO(guswynn): this probably should just be in the `connection`.
     pub envelope: SinkEnvelope,
+    pub partition_strategy: SinkPartitionStrategy,
     pub with_snapshot: bool,
     pub version: u64,
     pub resolved_ids: ResolvedIds,
@@ -826,10 +831,25 @@ impl Sink {
         }
     }
 
-    /// Output format of the sink.
-    pub fn format<'a>(&'a self) -> Cow<'a, str> {
+    /// Output a combined format string of the sink. For legacy reasons
+    /// if the key-format is none or the key & value formats are
+    /// both the same (either avro or json), we return the value format name,
+    /// otherwise we return a composite name.
+    pub fn combined_format(&self) -> Cow<'_, str> {
         let StorageSinkConnection::Kafka(connection) = &self.connection;
         connection.format.get_format_name()
+    }
+
+    /// Output distinct key_format and value_format of the sink.
+    pub fn formats(&self) -> (Option<&str>, &str) {
+        let StorageSinkConnection::Kafka(connection) = &self.connection;
+        let key_format = connection
+            .format
+            .key_format
+            .as_ref()
+            .map(|format| format.get_format_name());
+        let value_format = connection.format.value_format.get_format_name();
+        (key_format, value_format)
     }
 
     pub fn connection_id(&self) -> Option<GlobalId> {
@@ -1603,15 +1623,18 @@ impl CatalogEntry {
         matches!(self.item(), CatalogItem::Source(_))
     }
 
-    /// Reports whether this catalog entry is a subsource and, if it is, the
-    /// ingestion it is a subsource of, as well as the item it exports.
-    pub fn subsource_details(&self) -> Option<(GlobalId, &UnresolvedItemName)> {
+    /// Reports whether this catalog entry is a source export and, if it is, the
+    /// ingestion it is an export of of, as well as the item it exports.
+    pub fn source_export_details(
+        &self,
+    ) -> Option<(GlobalId, &UnresolvedItemName, &SourceExportDetails)> {
         match &self.item() {
             CatalogItem::Source(source) => match &source.data_source {
                 DataSourceDesc::IngestionExport {
                     ingestion_id,
                     external_reference,
-                } => Some((*ingestion_id, external_reference)),
+                    details,
+                } => Some((*ingestion_id, external_reference, details)),
                 _ => None,
             },
             _ => None,
@@ -2385,8 +2408,10 @@ impl mz_sql::catalog::CatalogItem for CatalogEntry {
         self.used_by()
     }
 
-    fn subsource_details(&self) -> Option<(GlobalId, &UnresolvedItemName)> {
-        self.subsource_details()
+    fn source_export_details(
+        &self,
+    ) -> Option<(GlobalId, &UnresolvedItemName, &SourceExportDetails)> {
+        self.source_export_details()
     }
 
     fn is_progress_source(&self) -> bool {

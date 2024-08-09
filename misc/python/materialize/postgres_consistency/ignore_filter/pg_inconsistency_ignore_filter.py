@@ -23,11 +23,13 @@ from materialize.output_consistency.expression.expression_with_args import (
     ExpressionWithArgs,
 )
 from materialize.output_consistency.ignore_filter.expression_matchers import (
+    argument_has_any_characteristic,
     involves_data_type_categories,
     involves_data_type_category,
     is_any_date_time_expression,
     is_known_to_involve_exact_data_types,
     is_operation_tagged,
+    is_table_function,
     matches_any_expression_arg,
     matches_fun_by_any_name,
     matches_fun_by_name,
@@ -59,6 +61,7 @@ from materialize.output_consistency.input_data.operations.generic_operations_pro
 from materialize.output_consistency.input_data.operations.jsonb_operations_provider import (
     TAG_JSONB_AGGREGATION,
     TAG_JSONB_TO_TEXT,
+    TAG_JSONB_VALUE_ACCESS,
 )
 from materialize.output_consistency.input_data.operations.record_operations_provider import (
     TAG_RECORD_CREATION,
@@ -328,6 +331,40 @@ class PgPreExecutionInconsistencyIgnoreFilter(
             ):
                 return YesIgnore("Consequence of #25723: decimal 0s are not shown")
 
+        if (
+            db_function.function_name_in_lower_case == "regexp_split_to_table"
+            and expression.matches(
+                partial(
+                    matches_x_and_y,
+                    x=partial(
+                        matches_op_by_any_pattern,
+                        patterns={
+                            "$ ILIKE $",
+                            "$ NOT ILIKE $",
+                        },
+                    ),
+                    y=partial(
+                        argument_has_any_characteristic,
+                        arg_index=1,
+                        characteristics={ExpressionCharacteristics.NULL},
+                    ),
+                ),
+                True,
+            )
+        ):
+            return YesIgnore("#28806: regexp_split_to_table with ILIKE on NULL")
+
+        if expression.matches(
+            partial(
+                matches_fun_by_name,
+                function_name_in_lower_case="regexp_split_to_table",
+            ),
+            True,
+        ) and expression.has_any_characteristic({ExpressionCharacteristics.NULL}):
+            return YesIgnore(
+                "#28806: function with NULL applied to regexp_split_to_table"
+            )
+
         return NoIgnore()
 
     def _matches_problematic_operation_invocation(
@@ -580,6 +617,49 @@ class PgPostExecutionInconsistencyIgnoreFilter(
         ):
             return YesIgnore("#28141: jsonb_object_agg with non-scalar key")
 
+        if query_template.matches_any_expression(
+            partial(
+                is_operation_tagged,
+                tag=TAG_JSONB_VALUE_ACCESS,
+            ),
+            True,
+        ):
+            return YesIgnore("Different evaluation order")
+
+        if query_template.matches_any_expression(
+            partial(
+                matches_x_and_y,
+                x=partial(
+                    matches_fun_by_name,
+                    function_name_in_lower_case="regexp_split_to_table",
+                ),
+                y=partial(
+                    matches_x_or_y,
+                    x=partial(
+                        argument_has_any_characteristic,
+                        arg_index=1,
+                        characteristics={ExpressionCharacteristics.NULL},
+                    ),
+                    y=partial(
+                        argument_has_any_characteristic,
+                        arg_index=2,
+                        characteristics={ExpressionCharacteristics.NULL},
+                    ),
+                ),
+            ),
+            True,
+        ):
+            return YesIgnore("Evaluation shortcut on NULL pattern")
+
+        if query_template.matches_any_expression(
+            partial(
+                matches_fun_by_name,
+                function_name_in_lower_case="regexp_split_to_table",
+            ),
+            True,
+        ):
+            return YesIgnore("Evaluation shortcut on NULL pattern")
+
         return NoIgnore()
 
     def _shall_ignore_mz_failure_where_pg_succeeds(
@@ -705,6 +785,27 @@ class PgPostExecutionInconsistencyIgnoreFilter(
             in mz_error_msg
         ):
             return YesIgnore("#28240: infinity to decimal")
+
+        if "invalid regular expression flag: n" in mz_error_msg:
+            return YesIgnore("#28805: regex n flag")
+
+        if "aggregate functions are not allowed in table function" in mz_error_msg:
+            return YesIgnore(
+                "#28390: aggregate functions are not allowed in table function arguments"
+            )
+
+        if "table functions are not allowed in other table functions" in mz_error_msg:
+            return YesIgnore(
+                "#28393: table functions are not allowed in other table functions"
+            )
+
+        if (
+            "table functions are not allowed in aggregate function calls"
+            in mz_error_msg
+        ):
+            return YesIgnore(
+                "#28871: table functions are not allowed in aggregate function calls"
+            )
 
         return NoIgnore()
 
@@ -857,68 +958,12 @@ class PgPostExecutionInconsistencyIgnoreFilter(
             partial(matches_fun_by_name, function_name_in_lower_case="pg_typeof"),
             True,
         ):
-            if query_template.matches_specific_select_or_filter_expression(
-                col_index, is_any_date_time_expression, True
-            ):
-                # "time without time zone" (mz) vs. "time" (pg)
-                # The condition is rather generic because it must also match when a text operation (e.g., upper)
-                # is applied to the string.
-                return YesIgnore("Different type name for time")
+            verdict = self._shall_ignore_pg_typeof_content_mismatch(
+                query_template, col_index
+            )
 
-            if query_template.matches_specific_select_or_filter_expression(
-                col_index,
-                partial(matches_fun_by_name, function_name_in_lower_case="floor"),
-                True,
-            ):
-                return YesIgnore("#28801: floor return type")
-
-            if query_template.matches_specific_select_or_filter_expression(
-                col_index,
-                partial(matches_fun_by_name, function_name_in_lower_case="array_agg"),
-                True,
-            ):
-                return YesIgnore(
-                    "#27150: array_agg(pg_typeof(...)) in pg flattens result"
-                )
-
-            if query_template.matches_specific_select_or_filter_expression(
-                col_index,
-                partial(
-                    is_known_to_involve_exact_data_types,
-                    internal_data_type_identifiers={REAL_TYPE_IDENTIFIER},
-                ),
-                True,
-            ) and not query_template.matches_specific_select_or_filter_expression(
-                col_index,
-                partial(
-                    is_known_to_involve_exact_data_types,
-                    internal_data_type_identifiers={DOUBLE_TYPE_IDENTIFIER},
-                ),
-                True,
-            ):
-                # e.g., round(1::REAL) returns REAL in mz but DOUBLE PRECISION in pg
-                return YesIgnore("mz does not use double when operating on real value")
-
-            if query_template.matches_specific_select_or_filter_expression(
-                col_index,
-                partial(
-                    matches_x_and_y,
-                    x=partial(
-                        matches_fun_by_name, function_name_in_lower_case="pg_typeof"
-                    ),
-                    y=partial(
-                        matches_any_expression_arg,
-                        arg_matcher=partial(
-                            matches_fun_by_name, function_name_in_lower_case="pg_typeof"
-                        ),
-                    ),
-                ),
-                True,
-            ):
-                # nested invocation of pg_typeof
-                return YesIgnore(
-                    "pg_typeof(pg_typeof(...)) returns regtype in pg but text in mz"
-                )
+            if verdict.ignore:
+                return verdict
 
         if query_template.matches_specific_select_or_filter_expression(
             col_index,
@@ -988,6 +1033,86 @@ class PgPostExecutionInconsistencyIgnoreFilter(
             in all_involved_characteristics
         ):
             return YesIgnore("#28300: ALL and ANY with NULL or empty array")
+
+        if query_template.matches_specific_select_or_filter_expression(
+            col_index,
+            is_table_function,
+            True,
+        ) and (query_template.offset is not None or query_template.limit is not None):
+            # When table functions are used, a row-order insensitive comparison will be conducted in the result
+            # comparator. However, this is not sufficient when a LIMIT or OFFSET clause is present.
+            return YesIgnore("Different sort order")
+
+        return NoIgnore()
+
+    def _shall_ignore_pg_typeof_content_mismatch(
+        self,
+        query_template: QueryTemplate,
+        col_index: int,
+    ) -> IgnoreVerdict:
+        if query_template.matches_specific_select_or_filter_expression(
+            col_index, is_any_date_time_expression, True
+        ):
+            # "time without time zone" (mz) vs. "time" (pg)
+            # The condition is rather generic because it must also match when a text operation (e.g., upper)
+            # is applied to the string.
+            return YesIgnore("Different type name for time")
+
+        if query_template.matches_specific_select_or_filter_expression(
+            col_index,
+            partial(matches_fun_by_name, function_name_in_lower_case="floor"),
+            True,
+        ):
+            return YesIgnore("#28801: floor return type")
+
+        if query_template.matches_specific_select_or_filter_expression(
+            col_index,
+            partial(matches_fun_by_name, function_name_in_lower_case="array_agg"),
+            True,
+        ):
+            return YesIgnore("#27150: array_agg(pg_typeof(...)) in pg flattens result")
+
+        if query_template.matches_specific_select_or_filter_expression(
+            col_index,
+            partial(
+                is_known_to_involve_exact_data_types,
+                internal_data_type_identifiers={REAL_TYPE_IDENTIFIER},
+            ),
+            True,
+        ) and not query_template.matches_specific_select_or_filter_expression(
+            col_index,
+            partial(
+                is_known_to_involve_exact_data_types,
+                internal_data_type_identifiers={DOUBLE_TYPE_IDENTIFIER},
+            ),
+            True,
+        ):
+            # e.g., round(1::REAL) returns REAL in mz but DOUBLE PRECISION in pg
+            return YesIgnore("mz does not use double when operating on real value")
+
+        if query_template.matches_specific_select_or_filter_expression(
+            col_index,
+            partial(
+                matches_x_and_y,
+                x=partial(matches_fun_by_name, function_name_in_lower_case="pg_typeof"),
+                y=partial(
+                    matches_any_expression_arg,
+                    arg_matcher=partial(
+                        matches_fun_by_name, function_name_in_lower_case="pg_typeof"
+                    ),
+                ),
+            ),
+            True,
+        ):
+            # nested invocation of pg_typeof
+            return YesIgnore(
+                "pg_typeof(pg_typeof(...)) returns regtype in pg but text in mz"
+            )
+
+        if query_template.matches_specific_select_or_filter_expression(
+            col_index, partial(matches_op_by_pattern, pattern="$ / $"), True
+        ):
+            return YesIgnore("#28852: numeric return type inconsistency")
 
         return NoIgnore()
 

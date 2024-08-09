@@ -839,9 +839,11 @@ impl CatalogState {
                     mz_sql::plan::DataSourceDesc::IngestionExport {
                         ingestion_id,
                         external_reference,
+                        details,
                     } => DataSourceDesc::IngestionExport {
                         ingestion_id,
                         external_reference,
+                        details,
                     },
                     mz_sql::plan::DataSourceDesc::Progress => DataSourceDesc::Progress,
                     mz_sql::plan::DataSourceDesc::Webhook {
@@ -938,6 +940,7 @@ impl CatalogState {
                 create_sql: sink.create_sql,
                 from: sink.from,
                 connection: sink.connection,
+                partition_strategy: sink.partition_strategy,
                 envelope: sink.envelope,
                 version: sink.version,
                 with_snapshot,

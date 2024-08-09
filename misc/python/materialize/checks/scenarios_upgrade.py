@@ -31,15 +31,18 @@ _minor_versions: list[MzVersion] | None = None
 _last_version: MzVersion | None = None
 _previous_version: MzVersion | None = None
 
-_no_0dt_system_parameters = {"enable_0dt_deployment": "false"}
-
 
 def get_minor_versions() -> list[MzVersion]:
     global _minor_versions
     if _minor_versions is None:
-        _minor_versions = get_published_minor_mz_versions(
-            limit=4, exclude_current_minor_version=True
-        )
+        current_version = MzVersion.parse_cargo()
+        _minor_versions = [
+            v
+            for v in get_published_minor_mz_versions(
+                limit=4, exclude_current_minor_version=True
+            )
+            if v < current_version
+        ]
     return _minor_versions
 
 
@@ -62,6 +65,7 @@ def start_mz_read_only(
     deploy_generation: int,
     mz_service: str = "materialized",
     tag: MzVersion | None = None,
+    system_parameter_defaults: dict[str, str] | None = None,
     system_parameter_version: MzVersion | None = None,
 ) -> StartMz:
     return StartMz(
@@ -71,6 +75,7 @@ def start_mz_read_only(
         deploy_generation=deploy_generation,
         healthcheck=LEADER_STATUS_HEALTHCHECK,
         restart="unless-stopped",
+        system_parameter_defaults=system_parameter_defaults,
         system_parameter_version=system_parameter_version,
     )
 
@@ -87,7 +92,6 @@ class UpgradeEntireMz(Scenario):
             StartMz(
                 self,
                 tag=self.base_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Initialize(self),
             Manipulate(self, phase=1),
@@ -97,7 +101,6 @@ class UpgradeEntireMz(Scenario):
             StartMz(
                 self,
                 tag=None,
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Manipulate(self, phase=2),
             Validate(self),
@@ -106,7 +109,6 @@ class UpgradeEntireMz(Scenario):
             StartMz(
                 self,
                 tag=None,
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Validate(self),
         ]
@@ -126,7 +128,6 @@ class UpgradeEntireMzTwoVersions(Scenario):
             StartMz(
                 self,
                 tag=self.base_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Initialize(self),
             # Upgrade to last_version
@@ -134,7 +135,6 @@ class UpgradeEntireMzTwoVersions(Scenario):
             StartMz(
                 self,
                 tag=get_last_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Manipulate(self, phase=1),
             # Upgrade to current source
@@ -142,7 +142,6 @@ class UpgradeEntireMzTwoVersions(Scenario):
             StartMz(
                 self,
                 tag=None,
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Manipulate(self, phase=2),
             Validate(self),
@@ -151,7 +150,6 @@ class UpgradeEntireMzTwoVersions(Scenario):
             StartMz(
                 self,
                 tag=None,
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Validate(self),
         ]
@@ -177,41 +175,35 @@ class UpgradeEntireMzFourVersions(Scenario):
             StartMz(
                 self,
                 tag=self.minor_versions[3],
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Initialize(self),
             KillMz(capture_logs=True),
             StartMz(
                 self,
                 tag=self.minor_versions[2],
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Manipulate(self, phase=1),
             KillMz(capture_logs=True),
             StartMz(
                 self,
                 tag=get_previous_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Manipulate(self, phase=2),
             KillMz(capture_logs=True),
             StartMz(
                 self,
                 tag=get_last_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             KillMz(capture_logs=True),
             StartMz(
                 self,
                 tag=None,
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Validate(self),
             KillMz(),
             StartMz(
                 self,
                 tag=None,
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Validate(self),
         ]
@@ -237,7 +229,6 @@ class UpgradeClusterdComputeLast(Scenario):
             StartMz(
                 self,
                 tag=self.base_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             StartClusterdCompute(tag=self.base_version()),
             UseClusterdCompute(self),
@@ -248,7 +239,6 @@ class UpgradeClusterdComputeLast(Scenario):
                 self,
                 tag=None,
                 system_parameter_version=self.base_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             # No useful work can be done while clusterd is old-version
             # and environmentd is new-version. So we proceed
@@ -265,7 +255,6 @@ class UpgradeClusterdComputeLast(Scenario):
             StartMz(
                 self,
                 tag=None,
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Validate(self),
         ]
@@ -282,7 +271,6 @@ class UpgradeClusterdComputeFirst(Scenario):
             StartMz(
                 self,
                 tag=self.base_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             StartClusterdCompute(tag=self.base_version()),
             UseClusterdCompute(self),
@@ -300,7 +288,6 @@ class UpgradeClusterdComputeFirst(Scenario):
             StartMz(
                 self,
                 tag=None,
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Manipulate(self, phase=2),
             Validate(self),
@@ -308,7 +295,6 @@ class UpgradeClusterdComputeFirst(Scenario):
             StartMz(
                 self,
                 tag=None,
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Validate(self),
         ]
@@ -339,7 +325,6 @@ class PreflightCheckContinue(Scenario):
             StartMz(
                 self,
                 tag=self.base_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Initialize(self),
             Manipulate(self, phase=1),
@@ -357,7 +342,6 @@ class PreflightCheckContinue(Scenario):
                 self,
                 tag=None,
                 deploy_generation=1,
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Validate(self),
         ]
@@ -375,7 +359,6 @@ class PreflightCheckRollback(Scenario):
             StartMz(
                 self,
                 tag=self.base_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Initialize(self),
             Manipulate(self, phase=1),
@@ -393,7 +376,6 @@ class PreflightCheckRollback(Scenario):
             StartMz(
                 self,
                 tag=self.base_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Manipulate(self, phase=2),
             Validate(self),
@@ -402,7 +384,6 @@ class PreflightCheckRollback(Scenario):
             StartMz(
                 self,
                 tag=self.base_version(),
-                additional_system_parameter_defaults=_no_0dt_system_parameters,
             ),
             Validate(self),
         ]

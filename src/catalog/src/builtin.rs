@@ -2219,7 +2219,11 @@ pub static MZ_SINKS: Lazy<BuiltinTable> = Lazy::new(|| BuiltinTable {
         .with_column("connection_id", ScalarType::String.nullable(true))
         .with_column("size", ScalarType::String.nullable(true))
         .with_column("envelope_type", ScalarType::String.nullable(true))
+        // This `format` column is deprecated and replaced by the `key_format` and `value_format` columns
+        // below. This should be removed in the future.
         .with_column("format", ScalarType::String.nullable(false))
+        .with_column("key_format", ScalarType::String.nullable(true))
+        .with_column("value_format", ScalarType::String.nullable(false))
         .with_column("cluster_id", ScalarType::String.nullable(false))
         .with_column("owner_id", ScalarType::String.nullable(false))
         .with_column("create_sql", ScalarType::String.nullable(false))
@@ -2596,6 +2600,15 @@ pub static MZ_INTERNAL_CLUSTER_REPLICAS: Lazy<BuiltinTable> = Lazy::new(|| Built
     name: "mz_internal_cluster_replicas",
     schema: MZ_INTERNAL_SCHEMA,
     oid: oid::TABLE_MZ_INTERNAL_CLUSTER_REPLICAS_OID,
+    desc: RelationDesc::empty().with_column("id", ScalarType::String.nullable(false)),
+    is_retained_metrics_object: false,
+    access: vec![PUBLIC_SELECT],
+});
+
+pub static MZ_PENDING_CLUSTER_REPLICAS: Lazy<BuiltinTable> = Lazy::new(|| BuiltinTable {
+    name: "mz_pending_cluster_replicas",
+    schema: MZ_INTERNAL_SCHEMA,
+    oid: oid::TABLE_MZ_PENDING_CLUSTER_REPLICAS_OID,
     desc: RelationDesc::empty().with_column("id", ScalarType::String.nullable(false)),
     is_retained_metrics_object: false,
     access: vec![PUBLIC_SELECT],
@@ -7465,6 +7478,7 @@ pub static BUILTINS_STATIC: Lazy<Vec<Builtin<NameReference>>> = Lazy::new(|| {
         Builtin::Table(&MZ_CLUSTER_REPLICA_SIZES),
         Builtin::Table(&MZ_CLUSTER_REPLICA_STATUSES),
         Builtin::Table(&MZ_INTERNAL_CLUSTER_REPLICAS),
+        Builtin::Table(&MZ_PENDING_CLUSTER_REPLICAS),
         Builtin::Table(&MZ_AUDIT_EVENTS),
         Builtin::Table(&MZ_STORAGE_USAGE_BY_SHARD),
         Builtin::Table(&MZ_EGRESS_IPS),

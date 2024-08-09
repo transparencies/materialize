@@ -17,3 +17,5 @@ class EvaluationScenario(Enum):
     """Materialize vs. Postgres"""
     VERSION_CONSISTENCY = 3
     """Two different versions of mz"""
+    FEATURE_FLAG_CONSISTENCY = 4
+    """Different feature flag configuration in mz"""

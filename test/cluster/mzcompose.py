@@ -22,7 +22,7 @@ import psycopg
 import requests
 from pg8000 import Cursor
 from pg8000.dbapi import ProgrammingError
-from pg8000.exceptions import DatabaseError
+from pg8000.exceptions import DatabaseError, InterfaceError
 
 from materialize import buildkite
 from materialize.mzcompose.composition import Composition, WorkflowArgumentParser
@@ -120,7 +120,7 @@ def workflow_test_smoke(c: Composition, parser: WorkflowArgumentParser) -> None:
         );
 
         GRANT ALL ON CLUSTER cluster1 TO materialize;
-    """,
+        """,
         port=6877,
         user="mz_system",
     )
@@ -1965,6 +1965,106 @@ def workflow_test_compute_reconciliation_no_errors(c: Composition) -> None:
         p = c.invoke("logs", service, capture=True)
         for line in p.stdout.splitlines():
             assert "ERROR" not in line, f"found ERROR in service {service}: {line}"
+
+
+def workflow_test_drop_during_reconciliation(c: Composition) -> None:
+    """
+    Test that dropping storage and compute objects during reconciliation works.
+
+    Regression test for #28784.
+    """
+
+    c.down(destroy_volumes=True)
+
+    with c.override(
+        Materialized(
+            additional_system_parameter_defaults={
+                "enable_unorchestrated_cluster_replicas": "true",
+            },
+        ),
+        Testdrive(
+            no_reset=True,
+            default_timeout="30s",
+        ),
+    ):
+        c.up("materialized", "clusterd1", "toxiproxy")
+        c.up("testdrive", persistent=True)
+
+        # Set up toxi-proxies for all clusterd endpoints.
+        toxi_url = "http://toxiproxy:8474/proxies"
+        for port in range(2100, 2104):
+            c.testdrive(
+                dedent(
+                    f"""
+                    $ http-request method=POST url={toxi_url} content-type=application/json
+                    {{
+                      "name": "clusterd_{port}",
+                      "listen": "0.0.0.0:{port}",
+                      "upstream": "clusterd1:{port}"
+                    }}
+                    """
+                )
+            )
+
+        # Set up a cluster with storage and compute objects that can be dropped
+        # during reconciliation.
+        c.sql(
+            """
+            CREATE CLUSTER cluster1 REPLICAS (replica1 (
+                STORAGECTL ADDRESSES ['toxiproxy:2100'],
+                STORAGE ADDRESSES ['toxiproxy:2103'],
+                COMPUTECTL ADDRESSES ['toxiproxy:2101'],
+                COMPUTE ADDRESSES ['toxiproxy:2102'],
+                WORKERS 1
+            ));
+            SET cluster = cluster1;
+
+            CREATE SOURCE s FROM LOAD GENERATOR COUNTER;
+            CREATE DEFAULT INDEX on s;
+            CREATE MATERIALIZED VIEW mv AS SELECT * FROM s;
+            """
+        )
+
+        # Wait for objects to be installed on the cluster.
+        c.sql("SELECT * FROM mv")
+
+        # Sever the connection between envd and clusterd.
+        for port in range(2100, 2104):
+            c.testdrive(
+                dedent(
+                    f"""
+                    $ http-request method=POST url={toxi_url}/clusterd_{port} content-type=application/json
+                    {{"enabled": false}}
+                    """
+                )
+            )
+
+        # Drop all objects installed on the cluster.
+        c.sql("DROP SOURCE s CASCADE")
+
+        # Restore the connection between envd and clusterd, causing a
+        # reconciliation.
+        for port in range(2100, 2104):
+            c.testdrive(
+                dedent(
+                    f"""
+                    $ http-request method=POST url={toxi_url}/clusterd_{port} content-type=application/json
+                    {{"enabled": true}}
+                    """
+                )
+            )
+
+        # Confirm the cluster is still healthy and the compute objects have
+        # been dropped. We can't verify the dropping of storage objects due to
+        # the lack of introspection for storage dataflows.
+        c.testdrive(
+            dedent(
+                """
+                > SET cluster = cluster1;
+                > SELECT * FROM mz_introspection.mz_compute_exports WHERE export_id LIKE 'u%';
+                """
+            )
+        )
 
 
 def workflow_test_mz_subscriptions(c: Composition) -> None:
@@ -4442,4 +4542,138 @@ def workflow_test_unified_introspection_during_replica_disconnect(c: Composition
                 true
                 """
             )
+        )
+
+
+def workflow_test_graceful_reconfigure(
+    c: Composition, parser: WorkflowArgumentParser
+) -> None:
+    """
+    Tests gracefully reconfiguring a managed cluster
+    """
+    c.down(destroy_volumes=True)
+    with c.override(
+        Testdrive(no_reset=True),
+    ):
+        c.up("testdrive", persistent=True)
+        c.up("materialized")
+        c.up("clusterd1")
+        c.sql(
+            """
+            ALTER SYSTEM SET enable_graceful_cluster_reconfiguration = true;
+
+            DROP CLUSTER IF EXISTS cluster1 CASCADE;
+            DROP TABLE IF EXISTS t CASCADE;
+
+            CREATE CLUSTER cluster1 ( SIZE = '1');
+
+            SET CLUSTER = cluster1;
+
+            -- now let's give it another go with user-defined objects
+            CREATE TABLE t (a int);
+            CREATE DEFAULT INDEX ON t;
+            INSERT INTO t VALUES (42);
+            GRANT ALL ON CLUSTER cluster1 TO materialize;
+            """,
+            port=6877,
+            user="mz_system",
+        )
+        replicas = c.sql_query(
+            """
+            SELECT mz_cluster_replicas.name
+            FROM mz_cluster_replicas, mz_clusters WHERE
+            mz_cluster_replicas.cluster_id = mz_clusters.id AND mz_clusters.name='cluster1';
+            """
+        )
+        assert replicas == (
+            ["r1"],
+        ), f"Cluster should only have one replica prior to alter, found {replicas}"
+
+        replicas = c.sql_query(
+            """
+            SELECT cr.name
+            FROM mz_internal.mz_pending_cluster_replicas ur
+            INNER join mz_cluster_replicas cr ON cr.id=ur.id
+            INNER join mz_clusters c ON c.id=cr.cluster_id
+            WHERE c.name = 'cluster1';
+            """
+        )
+        assert (
+            len(replicas) == 0
+        ), f"Cluster should only have no pending replica prior to alter, found {replicas}"
+
+        def gracefully_alter():
+            try:
+                c.sql(
+                    """
+                    ALTER CLUSTER cluster1 SET (SIZE = '2') WITH ( WAIT FOR '10s')
+                    """,
+                    port=6877,
+                    user="mz_system",
+                )
+            except InterfaceError:
+                # We expect the network to drop during this
+                pass
+
+        # Run a reconfigure
+        thread = Thread(target=gracefully_alter)
+        thread.start()
+        time.sleep(3)
+
+        # Validate that there is a pending replica
+        assert (
+            c.sql_query(
+                """
+            SELECT mz_cluster_replicas.name
+            FROM mz_cluster_replicas, mz_clusters WHERE
+            mz_cluster_replicas.cluster_id = mz_clusters.id AND mz_clusters.name='cluster1';
+            """
+            )
+            == (["r1"], ["r1-pending"])
+        )
+        replicas = c.sql_query(
+            """
+            SELECT cr.name
+            FROM mz_internal.mz_pending_cluster_replicas ur
+            INNER join mz_cluster_replicas cr ON cr.id=ur.id
+            INNER join mz_clusters c ON c.id=cr.cluster_id
+            WHERE c.name = 'cluster1';
+            """
+        )
+        assert (
+            len(replicas) == 1
+        ), "pending replica should be in mz_pending_cluster_replicas"
+
+        # Restart environmentd
+        c.kill("materialized")
+        c.up("materialized")
+
+        # Ensure there is no pending replica
+        replicas = c.sql_query(
+            """
+            SELECT mz_cluster_replicas.name
+            FROM mz_cluster_replicas, mz_clusters
+            WHERE mz_cluster_replicas.cluster_id = mz_clusters.id
+            AND mz_clusters.name='cluster1';
+            """
+        )
+        assert replicas == (
+            ["r1"],
+        ), f"Expected one non pending replica, found {replicas}"
+
+        # Ensure the cluster config did not change
+        assert (
+            c.sql_query(
+                """
+            SELECT size FROM mz_clusters WHERE name='cluster1';
+            """
+            )
+            == (["1"],)
+        )
+        c.sql(
+            """
+            ALTER SYSTEM RESET enable_graceful_cluster_reconfiguration;
+            """,
+            port=6877,
+            user="mz_system",
         )

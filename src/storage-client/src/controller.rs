@@ -45,7 +45,7 @@ use mz_storage_types::read_holds::{ReadHold, ReadHoldError};
 use mz_storage_types::read_policy::ReadPolicy;
 use mz_storage_types::sinks::{MetadataUnfilled, StorageSinkConnection, StorageSinkDesc};
 use mz_storage_types::sources::{
-    GenericSourceConnection, IngestionDescription, SourceData, SourceDesc,
+    GenericSourceConnection, IngestionDescription, SourceData, SourceDesc, SourceExportDetails,
 };
 use serde::{Deserialize, Serialize};
 use timely::progress::Timestamp as TimelyTimestamp;
@@ -108,6 +108,7 @@ pub enum DataSource {
         // be sufficiently genericized to support all multi-output sources we
         // support.
         external_reference: UnresolvedItemName,
+        details: SourceExportDetails,
     },
     /// Data comes from introspection sources, which the controller itself is
     /// responsible for generating.
@@ -597,6 +598,13 @@ pub trait StorageController: Debug {
         id: GlobalId,
         as_of: Self::Timestamp,
     ) -> Result<Vec<(Row, Diff)>, StorageError<Self::Timestamp>>;
+
+    /// Returns the snapshot of the contents of the local input named `id` at
+    /// the largest readable `as_of`.
+    async fn snapshot_latest(
+        &mut self,
+        id: GlobalId,
+    ) -> Result<Vec<Row>, StorageError<Self::Timestamp>>;
 
     /// Returns the snapshot of the contents of the local input named `id` at `as_of`.
     async fn snapshot_cursor(

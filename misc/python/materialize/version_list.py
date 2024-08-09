@@ -147,21 +147,29 @@ class AncestorImageResolutionBase:
             f"{context_prefix} {tagged_release_version}",
         )
 
-    def _resolve_image_tag_of_latest_release(self, context: str) -> tuple[str, str]:
-        latest_published_version = get_latest_published_version()
+    def _resolve_image_tag_of_previous_release_from_current(
+        self, context: str
+    ) -> tuple[str, str]:
+        # Even though we are on main we might be in an older state, pick the
+        # latest release that was before our current version.
+        current_version = MzVersion.parse_cargo()
+
+        previous_published_version = get_previous_published_version(
+            current_version, previous_minor=True
+        )
         override_commit = self._get_override_commit_instead_of_version(
-            latest_published_version
+            previous_published_version
         )
 
         if override_commit is not None:
             # use the commit instead of the latest release
             return (
                 commit_to_image_tag(override_commit),
-                f"commit override instead of latest release ({latest_published_version})",
+                f"commit override instead of latest release ({previous_published_version})",
             )
 
         return (
-            version_to_image_tag(latest_published_version),
+            version_to_image_tag(previous_published_version),
             context,
         )
 
@@ -191,8 +199,8 @@ class AncestorImageResolutionLocal(AncestorImageResolutionBase):
                 previous_minor=True,
             )
         elif build_context.is_on_main_branch():
-            return self._resolve_image_tag_of_latest_release(
-                "latest release because on local main branch"
+            return self._resolve_image_tag_of_previous_release_from_current(
+                "previous release from current because on local main branch"
             )
         else:
             return self._resolve_image_tag_of_merge_base(
@@ -213,8 +221,8 @@ class AncestorImageResolutionInBuildkite(AncestorImageResolutionBase):
                 "previous minor release because on release branch", previous_minor=True
             )
         else:
-            return self._resolve_image_tag_of_latest_release(
-                "latest release because not in a pull request and not on a release branch",
+            return self._resolve_image_tag_of_previous_release_from_current(
+                "previous release from current because not in a pull request and not on a release branch",
             )
 
 
@@ -468,16 +476,20 @@ class VersionsFromDocs:
     def __init__(self) -> None:
         files = Path(MZ_ROOT / "doc" / "user" / "content" / "releases").glob("v*.md")
         self.versions = []
+        current_version = MzVersion.parse_cargo()
         for f in files:
             base = f.stem
             metadata = frontmatter.load(f)
-            if not metadata.get("released", False):
-                continue
 
             current_patch = metadata.get("patch", 0)
 
             for patch in range(current_patch + 1):
                 version = MzVersion.parse_mz(f"{base}.{patch}")
+                # We don't consider the "released:" field since it can be out of
+                # date, instead use any version that is less than our current
+                # version:
+                if version >= current_version:
+                    continue
                 if version not in INVALID_VERSIONS:
                     self.versions.append(version)
 

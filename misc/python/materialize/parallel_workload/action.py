@@ -27,6 +27,7 @@ import materialize.parallel_workload.database
 from materialize.data_ingest.data_type import NUMBER_TYPES, Text, TextTextMap
 from materialize.data_ingest.query_error import QueryError
 from materialize.data_ingest.row import Operation
+from materialize.mzcompose import get_default_system_parameters
 from materialize.mzcompose.composition import Composition
 from materialize.mzcompose.services.materialized import (
     LEADER_STATUS_HEALTHCHECK,
@@ -764,6 +765,9 @@ class RenameSinkAction(Action):
 
 class AlterKafkaSinkFromAction(Action):
     def run(self, exe: Executor) -> bool:
+        if exe.db.scenario == Scenario.Kill:
+            # Does not work reliably with kills, see #28870
+            return False
         with exe.db.lock:
             if not exe.db.kafka_sinks:
                 return False
@@ -1614,6 +1618,9 @@ class ZeroDowntimeDeployAction(Action):
                 ports=ports,
                 sanity_restart=self.sanity_restart,
                 deploy_generation=self.deploy_generation,
+                system_parameter_defaults=get_default_system_parameters(
+                    zero_downtime=True
+                ),
                 restart="on-failure",
                 healthcheck=LEADER_STATUS_HEALTHCHECK,
             ),
@@ -2183,8 +2190,7 @@ ddl_action_list = ActionList(
         (DropClusterAction, 2),
         (SwapClusterAction, 10),
         (CreateClusterReplicaAction, 4),
-        # TODO: Reenable when #28166 is fixed
-        # (DropClusterReplicaAction, 4),
+        (DropClusterReplicaAction, 4),
         (SetClusterAction, 1),
         (CreateWebhookSourceAction, 2),
         (DropWebhookSourceAction, 2),

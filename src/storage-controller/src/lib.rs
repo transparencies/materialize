@@ -23,7 +23,7 @@ use chrono::{DateTime, Utc};
 use derivative::Derivative;
 use differential_dataflow::lattice::Lattice;
 use futures::future::BoxFuture;
-use futures::stream::BoxStream;
+use futures::stream::{BoxStream, FuturesUnordered};
 use futures::FutureExt;
 use itertools::Itertools;
 use mz_build_info::BuildInfo;
@@ -71,8 +71,8 @@ use mz_storage_types::read_holds::{ReadHold, ReadHoldError};
 use mz_storage_types::read_policy::ReadPolicy;
 use mz_storage_types::sinks::{StorageSinkConnection, StorageSinkDesc};
 use mz_storage_types::sources::{
-    ExportReference, GenericSourceConnection, IngestionDescription, SourceConnection, SourceData,
-    SourceDesc, SourceExport,
+    ExportReference, GenericSourceConnection, IngestionDescription, SourceData, SourceDesc,
+    SourceExport, SourceExportDetails,
 };
 use mz_storage_types::AlterCompatible;
 use mz_txn_wal::metrics::Metrics as TxnMetrics;
@@ -84,15 +84,16 @@ use timely::progress::{Antichain, ChangeBatch, Timestamp};
 use tokio::sync::mpsc;
 use tokio::sync::watch::{channel, Sender};
 use tokio::time::error::Elapsed;
-use tokio_stream::StreamMap;
 use tracing::{debug, info, warn};
 
-use crate::rehydration::RehydratingStorageClient;
+use crate::instance::{Instance, ReplicaConfig};
 use crate::statistics::StatsState;
+
 mod collection_mgmt;
 mod collection_status;
+mod history;
+mod instance;
 mod persist_handles;
-mod rehydration;
 mod rtr;
 mod statistics;
 
@@ -177,9 +178,7 @@ pub struct Controller<T: Timestamp + Lattice + Codec64 + From<EpochMillis> + Tim
     statistics_interval_sender: Sender<Duration>,
 
     /// Clients for all known storage instances.
-    clients: BTreeMap<StorageInstanceId, RehydratingStorageClient<T>>,
-    /// For each storage instance the ID of its replica, if any.
-    replicas: BTreeMap<StorageInstanceId, ReplicaId>,
+    instances: BTreeMap<StorageInstanceId, Instance<T>>,
     /// Set to `true` once `initialization_complete` has been called.
     initialized: bool,
     /// Storage configuration to apply to newly provisioned instances, and use during purification.
@@ -230,8 +229,8 @@ where
         self.reconcile_dangling_statistics();
         self.initialized = true;
 
-        for client in self.clients.values_mut() {
-            client.send(StorageCommand::InitializationComplete);
+        for instance in self.instances.values_mut() {
+            instance.send(StorageCommand::InitializationComplete);
         }
     }
 
@@ -335,8 +334,8 @@ where
         // persist separately.
         self.persist.cfg().apply_from(&config_params.dyncfg_updates);
 
-        for client in self.clients.values_mut() {
-            client.send(StorageCommand::UpdateConfiguration(config_params.clone()));
+        for instance in self.instances.values_mut() {
+            instance.send(StorageCommand::UpdateConfiguration(config_params.clone()));
         }
         self.config.update(config_params);
         self.statistics_interval_sender
@@ -423,26 +422,21 @@ where
     }
 
     fn create_instance(&mut self, id: StorageInstanceId) {
-        let mut client = RehydratingStorageClient::new(
-            self.build_info,
-            self.metrics.for_instance(id),
-            self.envd_epoch,
-            self.config.parameters.grpc_client.clone(),
-            self.now.clone(),
-        );
+        let metrics = self.metrics.for_instance(id);
+        let mut instance = Instance::new(self.envd_epoch, metrics, self.now.clone());
         if self.initialized {
-            client.send(StorageCommand::InitializationComplete);
+            instance.send(StorageCommand::InitializationComplete);
         }
-        client.send(StorageCommand::UpdateConfiguration(
+        instance.send(StorageCommand::UpdateConfiguration(
             self.config.parameters.clone(),
         ));
-        let old_client = self.clients.insert(id, client);
-        assert_none!(old_client, "storage instance {id} already exists");
+        let old_instance = self.instances.insert(id, instance);
+        assert_none!(old_instance, "storage instance {id} already exists");
     }
 
     fn drop_instance(&mut self, id: StorageInstanceId) {
-        let client = self.clients.remove(&id);
-        assert!(client.is_some(), "storage instance {id} does not exist");
+        let instance = self.instances.remove(&id);
+        assert!(instance.is_some(), "storage instance {id} does not exist");
     }
 
     fn connect_replica(
@@ -451,23 +445,24 @@ where
         replica_id: ReplicaId,
         location: ClusterReplicaLocation,
     ) {
-        let client = self
-            .clients
+        let instance = self
+            .instances
             .get_mut(&instance_id)
             .unwrap_or_else(|| panic!("instance {instance_id} does not exist"));
-        client.connect(location);
 
-        self.replicas.insert(instance_id, replica_id);
+        let config = ReplicaConfig {
+            build_info: self.build_info,
+            location,
+            grpc_client: self.config.parameters.grpc_client.clone(),
+        };
+        instance.add_replica(replica_id, config);
     }
 
-    fn drop_replica(&mut self, instance_id: StorageInstanceId, _replica_id: ReplicaId) {
-        let client = self
-            .clients
+    fn drop_replica(&mut self, instance_id: StorageInstanceId, replica_id: ReplicaId) {
+        self.instances
             .get_mut(&instance_id)
-            .unwrap_or_else(|| panic!("instance {instance_id} does not exist"));
-        client.reset();
-
-        self.replicas.remove(&instance_id);
+            .unwrap_or_else(|| panic!("instance {instance_id} does not exist"))
+            .drop_replica(replica_id);
     }
 
     /// Create and "execute" the described collection.
@@ -661,6 +656,7 @@ where
                     SourceExport {
                         ingestion_output: None,
                         storage_metadata: (),
+                        details: SourceExportDetails::None,
                     },
                 );
             }
@@ -737,6 +733,7 @@ where
                 DataSource::IngestionExport {
                     ingestion_id,
                     external_reference,
+                    details,
                 } => {
                     debug!(data_source = ?collection_state.data_source, meta = ?metadata, "not registering {} with a controller persist worker", id);
                     // Adjust the source to contain this export.
@@ -754,6 +751,7 @@ where
                                         external_reference.clone(),
                                     )),
                                     storage_metadata: (),
+                                    details: details.clone(),
                                 },
                             );
 
@@ -910,45 +908,6 @@ where
                 cur_ingestion
                     .desc
                     .alter_compatible(ingestion_id, source_desc)?;
-
-                let reference_resolver = cur_ingestion.desc.connection.get_reference_resolver();
-
-                // Ensure updated `SourceDesc` contains reference to all
-                // current external references.
-                for export_id in cur_ingestion
-                    .source_exports
-                    .keys()
-                    .filter(|export| **export != ingestion_id)
-                {
-                    let collection = self
-                        .collections
-                        .get(export_id)
-                        .ok_or(AlterError { id: ingestion_id })?;
-
-                    let external_reference = match &collection.data_source {
-                        DataSource::IngestionExport {
-                            external_reference, ..
-                        } => external_reference,
-                        o => {
-                            tracing::warn!(
-                                "{export_id:?} not DataSource::IngestionExport but {o:#?}",
-                            );
-                            Err(AlterError { id: ingestion_id })?
-                        }
-                    };
-
-                    if reference_resolver
-                        .resolve_idx(&external_reference.0)
-                        .is_err()
-                    {
-                        tracing::warn!(
-                            "subsource {export_id} of {ingestion_id} refers to \
-                            {external_reference:?}, which is missing from \
-                            updated SourceDesc \n{source_desc:#?}"
-                        );
-                        Err(AlterError { id: ingestion_id })?
-                    }
-                }
             }
             o => {
                 tracing::info!(
@@ -1231,6 +1190,7 @@ where
                 envelope: new_description.sink.envelope,
                 as_of: new_description.sink.as_of,
                 version: new_description.sink.version,
+                partition_strategy: new_description.sink.partition_strategy,
                 status_id,
                 from_storage_metadata,
                 with_snapshot: new_description.sink.with_snapshot,
@@ -1238,15 +1198,15 @@ where
         };
 
         // Fetch the client for this exports's cluster.
-        let client = self
-            .clients
+        let instance = self
+            .instances
             .get_mut(&new_description.instance_id)
             .ok_or_else(|| StorageError::ExportInstanceMissing {
                 storage_instance_id: new_description.instance_id,
                 export_id: id,
             })?;
 
-        client.send(StorageCommand::RunSinks(vec![cmd]));
+        instance.send(StorageCommand::RunSinks(vec![cmd]));
         Ok(())
     }
 
@@ -1303,6 +1263,7 @@ where
                     connection: new_export_description.sink.connection.clone(),
                     envelope: new_export_description.sink.envelope,
                     with_snapshot: new_export_description.sink.with_snapshot,
+                    partition_strategy: new_export_description.sink.partition_strategy.clone(),
                     version: new_export_description.sink.version,
                     // Here we are about to send a RunSinkCommand with the current read capaibility
                     // held by this sink. However, clusters are already running a version of the
@@ -1336,7 +1297,7 @@ where
             }
 
             // Fetch the client for this exports's cluster.
-            let client = self.clients.get_mut(&instance_id).ok_or_else(|| {
+            let instance = self.instances.get_mut(&instance_id).ok_or_else(|| {
                 StorageError::ExportInstanceMissing {
                     storage_instance_id: instance_id,
                     export_id: *export_updates
@@ -1346,7 +1307,7 @@ where
                 }
             })?;
 
-            client.send(StorageCommand::RunSinks(cmds));
+            instance.send(StorageCommand::RunSinks(cmds));
 
             // Update state only after all possible errors have occurred.
             for (id, new_export_description) in export_updates {
@@ -1655,6 +1616,46 @@ where
         }
     }
 
+    async fn snapshot_latest(
+        &mut self,
+        id: GlobalId,
+    ) -> Result<Vec<Row>, StorageError<Self::Timestamp>> {
+        let upper = self
+            .persist_monotonic_worker
+            .recent_upper(id)
+            .await
+            .expect("sender hung up")?;
+
+        let res = match upper.as_option() {
+            Some(f) if f > &T::minimum() => {
+                let as_of = f.step_back().unwrap();
+
+                let snapshot = self.snapshot(id, as_of).await.unwrap();
+                snapshot
+                    .into_iter()
+                    .map(|(row, diff)| {
+                        assert!(diff == 1, "snapshot doesn't accumulate to set");
+                        row
+                    })
+                    .collect()
+            }
+            Some(_min) => {
+                // The collection must be empty!
+                Vec::new()
+            }
+            // The collection is closed, we cannot determine a latest read
+            // timestamp based on the upper.
+            _ => {
+                return Err(StorageError::InvalidUsage(
+                    "collection closed, cannot determine a read timestamp based on the upper"
+                        .to_string(),
+                ));
+            }
+        };
+
+        Ok(res)
+    }
+
     async fn snapshot_cursor(
         &mut self,
         id: GlobalId,
@@ -1752,24 +1753,21 @@ where
             return;
         }
 
-        let mut clients = self
-            .clients
+        let mut instance_responses = self
+            .instances
             .values_mut()
-            .map(|client| client.response_stream())
-            .enumerate()
-            .collect::<StreamMap<_, _>>();
+            .map(|instance| instance.recv())
+            .collect::<FuturesUnordered<_>>();
 
         use tokio_stream::StreamExt;
-        let msg = tokio::select! {
+        self.stashed_response = tokio::select! {
             // Order matters here. We want to process internal commands
             // before processing external commands.
             biased;
 
-            Some(m) = self.internal_response_queue.recv() => m,
-            Some((_id, m)) = clients.next() => m,
+            Some(m) = self.internal_response_queue.recv() => Some(m),
+            Some(m) = instance_responses.next() => m,
         };
-
-        self.stashed_response = Some(msg);
     }
 
     #[instrument(level = "debug")]
@@ -1777,6 +1775,10 @@ where
         &mut self,
         storage_metadata: &StorageMetadata,
     ) -> Result<Option<Response<T>>, anyhow::Error> {
+        for instance in self.instances.values_mut() {
+            instance.rehydrate_failed_replicas();
+        }
+
         let mut updated_frontiers = None;
         match self.stashed_response.take() {
             None => (),
@@ -1879,7 +1881,7 @@ where
             // TODO(aljoscha): What's up with this TODO?
             // Note that while collections are dropped, the `client` may already
             // be cleared out, before we do this post-processing!
-            let client = cluster_id.and_then(|cluster_id| self.clients.get_mut(&cluster_id));
+            let instance = cluster_id.and_then(|cluster_id| self.instances.get_mut(&cluster_id));
 
             let internal_response_sender = self.internal_response_sender.clone();
             let spawn_cleanup_task = |drop_fut| {
@@ -1895,7 +1897,7 @@ where
             };
 
             if read_frontier.is_empty() {
-                if client.is_some() && self.collections.contains_key(&id) {
+                if instance.is_some() && self.collections.contains_key(&id) {
                     let collection = self.collections.get(&id).expect("known to exist");
                     match collection.extra_state {
                         CollectionStateExtra::Ingestion(_) => {
@@ -1938,9 +1940,9 @@ where
                         DataSource::Progress => (),
                         DataSource::Other(_) => (),
                     }
-                } else if client.is_some() && self.exports.contains_key(&id) {
+                } else if instance.is_some() && self.exports.contains_key(&id) {
                     pending_sink_drops.push(id);
-                } else if client.is_none() {
+                } else if instance.is_none() {
                     tracing::info!("Compaction command for id {id}, but we don't have a client.");
                 } else {
                     soft_panic_or_log!("Reference to absent collection {id}");
@@ -1955,7 +1957,7 @@ where
 
             // Note that while collections are dropped, the `client` may already
             // be cleared out, before we do this post-processing!
-            if let Some(client) = client {
+            if let Some(client) = instance {
                 client.send(StorageCommand::AllowCompaction(vec![(
                     id,
                     read_frontier.clone(),
@@ -2119,21 +2121,26 @@ where
                 CollectionStateExtra::None => continue,
             };
 
-            let replica_id = self
-                .replicas
+            let replica_ids = self
+                .instances
                 .get(&ingestion_state.instance_id)
-                .and_then(|r| uppers.remove(object_id).map(|uppers| (r.clone(), uppers)));
+                .map(|i| i.replica_ids());
+            let upper = uppers.remove(object_id);
 
-            if let Some((replica_id, upper)) = replica_id {
-                frontiers.insert((*object_id, replica_id), upper);
+            if let (Some(replica_ids), Some(upper)) = (replica_ids, upper) {
+                for replica_id in replica_ids {
+                    frontiers.insert((*object_id, replica_id), upper.clone());
+                }
             }
         }
         for (object_id, export) in self.active_exports() {
             let cluster_id = export.cluster_id();
-            let replica_id = self.replicas.get(&cluster_id).copied();
-            if let Some(replica_id) = replica_id {
-                let upper = export.write_frontier.clone();
-                frontiers.insert((object_id, replica_id), upper);
+            let replica_ids = self.instances.get(&cluster_id).map(|i| i.replica_ids());
+            if let Some(replica_ids) = replica_ids {
+                for replica_id in replica_ids {
+                    let upper = export.write_frontier.clone();
+                    frontiers.insert((object_id, replica_id), upper);
+                }
             }
         }
 
@@ -2444,8 +2451,7 @@ where
             })),
             sink_statistics: Arc::new(Mutex::new(BTreeMap::new())),
             statistics_interval_sender,
-            clients: BTreeMap::new(),
-            replicas: BTreeMap::new(),
+            instances: BTreeMap::new(),
             initialized: false,
             config: StorageConfiguration::new(connection_context, mz_dyncfgs::all_dyncfgs()),
             internal_response_sender: tx,
@@ -3639,6 +3645,7 @@ where
             SourceExport {
                 ingestion_output,
                 storage_metadata: (),
+                details,
             },
         ) in ingestion_description.source_exports
         {
@@ -3648,6 +3655,7 @@ where
                 SourceExport {
                     ingestion_output,
                     storage_metadata: export_storage_metadata,
+                    details,
                 },
             );
         }
@@ -3665,15 +3673,16 @@ where
 
         let storage_instance_id = description.instance_id;
         // Fetch the client for this ingestion's instance.
-        let client = self.clients.get_mut(&storage_instance_id).ok_or_else(|| {
-            StorageError::IngestionInstanceMissing {
+        let instance = self
+            .instances
+            .get_mut(&storage_instance_id)
+            .ok_or_else(|| StorageError::IngestionInstanceMissing {
                 storage_instance_id,
                 ingestion_id: id,
-            }
-        })?;
+            })?;
 
         let augmented_ingestion = RunIngestionCommand { id, description };
-        client.send(StorageCommand::RunIngestions(vec![augmented_ingestion]));
+        instance.send(StorageCommand::RunIngestions(vec![augmented_ingestion]));
 
         Ok(())
     }
@@ -3714,6 +3723,7 @@ where
                 envelope: description.sink.envelope,
                 as_of: description.sink.as_of.clone(),
                 version: description.sink.version,
+                partition_strategy: description.sink.partition_strategy.clone(),
                 status_id,
                 from_storage_metadata,
                 with_snapshot: description.sink.with_snapshot,
@@ -3722,15 +3732,15 @@ where
 
         let storage_instance_id = description.instance_id.clone();
 
-        // Fetch the client for this exports's cluster.
-        let client = self.clients.get_mut(&storage_instance_id).ok_or_else(|| {
-            StorageError::ExportInstanceMissing {
+        let instance = self
+            .instances
+            .get_mut(&storage_instance_id)
+            .ok_or_else(|| StorageError::ExportInstanceMissing {
                 storage_instance_id,
                 export_id: id,
-            }
-        })?;
+            })?;
 
-        client.send(StorageCommand::RunSinks(vec![cmd]));
+        instance.send(StorageCommand::RunSinks(vec![cmd]));
 
         Ok(())
     }

@@ -10,15 +10,21 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use futures::future::BoxFuture;
+use mz_adapter_types::dyncfgs::DEFAULT_SINK_PARTITION_STRATEGY;
 use mz_catalog::durable::Item;
 use mz_catalog::memory::objects::{StateDiff, StateUpdate};
 use mz_catalog::{durable::Transaction, memory::objects::StateUpdateKind};
+use mz_dyncfg::ConfigSet;
 use mz_ore::collections::CollectionExt;
 use mz_ore::now::NowFn;
 use mz_repr::{GlobalId, Timestamp};
 use mz_sql::ast::display::AstDisplay;
 use mz_sql::ast::visit_mut::VisitMut;
-use mz_sql::ast::{CreateSourceStatement, UnresolvedItemName};
+use mz_sql::ast::{
+    CreateSinkConnection, CreateSinkOption, CreateSinkOptionName, CreateSinkStatement,
+    CreateSourceStatement, KafkaSinkConfigOption, KafkaSinkConfigOptionName, UnresolvedItemName,
+    Value, WithOptionValue,
+};
 use mz_sql_parser::ast::{Raw, Statement};
 use mz_storage_types::connections::ConnectionContext;
 use semver::Version;
@@ -108,7 +114,8 @@ pub(crate) async fn migrate(
     );
 
     rewrite_ast_items(tx, |_tx, _id, stmt, all_items_and_statements| {
-        let _catalog_version = catalog_version.clone();
+        let catalog_version = catalog_version.clone();
+        let configs = state.system_config().dyncfgs().clone();
         Box::pin(async move {
             // Add per-item AST migrations below.
             //
@@ -118,7 +125,11 @@ pub(crate) async fn migrate(
             //
             // Migration functions may also take `tx` as input to stage
             // arbitrary changes to the catalog.
+            ast_rewrite_create_sink_partition_strategy(&configs, stmt)?;
             ast_rewrite_create_subsource_options(stmt, all_items_and_statements)?;
+            if catalog_version < Version::parse("0.112.0-dev").expect("known to be valid") {
+                ast_rewrite_create_sink_default_compression(stmt)?;
+            }
             Ok(())
         })
     })
@@ -501,6 +512,55 @@ fn ast_rewrite_create_subsource_options(
     Ok(())
 }
 
+fn ast_rewrite_create_sink_partition_strategy(
+    configs: &ConfigSet,
+    stmt: &mut Statement<Raw>,
+) -> Result<(), anyhow::Error> {
+    let Statement::CreateSink(stmt) = stmt else {
+        return Ok(());
+    };
+
+    if !stmt
+        .with_options
+        .iter()
+        .any(|op| op.name == CreateSinkOptionName::PartitionStrategy)
+    {
+        let default_strategy = DEFAULT_SINK_PARTITION_STRATEGY.get(configs);
+        stmt.with_options.push(CreateSinkOption {
+            name: CreateSinkOptionName::PartitionStrategy,
+            value: Some(WithOptionValue::Value(Value::String(default_strategy))),
+        });
+    }
+
+    Ok(())
+}
+
+/// Inject `COMPRESSION TYPE = NONE` into existing sinks, to preserve the
+/// default compression type for sinks pre-v112.
+fn ast_rewrite_create_sink_default_compression(
+    stmt: &mut Statement<Raw>,
+) -> Result<(), anyhow::Error> {
+    match stmt {
+        Statement::CreateSink(CreateSinkStatement {
+            connection: CreateSinkConnection::Kafka { options, .. },
+            ..
+        }) => {
+            if !options
+                .iter()
+                .any(|op| op.name == KafkaSinkConfigOptionName::CompressionType)
+            {
+                options.push(KafkaSinkConfigOption {
+                    name: KafkaSinkConfigOptionName::CompressionType,
+                    value: Some(WithOptionValue::Value(Value::String("none".into()))),
+                });
+            }
+        }
+        _ => (),
+    }
+
+    Ok(())
+}
+
 // Durable migrations
 
 /// Migrations that run only on the durable catalog before any data is loaded into memory.
@@ -511,6 +571,7 @@ pub(crate) fn durable_migrate(
     catalog_add_new_unstable_schemas_v_0_106_0(tx)?;
     catalog_remove_wait_catalog_consolidation_on_startup_v_0_108_0(tx);
     catalog_remove_txn_wal_toggle_v_0_109_0(tx)?;
+
     Ok(())
 }
 
