@@ -7,7 +7,6 @@ menu:
   main:
     parent: "sm-deployments"
     weight: 71
-draft: true
 ---
 
 This guide explains how to configure system parameters for your Materialize
@@ -21,22 +20,27 @@ connection limits, cluster replica sizes, and other operational settings.
 
 There are two ways to configure system parameters:
 
-1. **Using SQL**: Connect to your Materialize instance and use the
-   [`ALTER SYSTEM SET`](/sql/alter-system-set/) command to modify parameters
-   dynamically. This is useful for one-off changes or testing.
+- **Using SQL**: Connect to your Materialize instance and use the [`ALTER SYSTEM
+  SET`](/sql/alter-system-set/) command to modify parameters dynamically. This
+  is useful for one-off changes or testing.
 
-2. **Using a ConfigMap**: Create a Kubernetes ConfigMap containing the
-   parameters in JSON format and reference it in your Materialize custom
-   resource. This is the recommended approach for persistent configuration
-   that survives restarts and upgrades.
+- **Using a ConfigMap**: Create a Kubernetes ConfigMap containing the parameters
+  in JSON format and reference it in your Materialize custom resource. This is
+  the recommended approach for persistent configuration that survives restarts
+  and upgrades.
 
 This guide focuses on the ConfigMap approach for self-managed deployments.
 
-## Creating a System Parameters ConfigMap
+{{< public-preview />}}
 
-Create a ConfigMap in the same namespace as your Materialize environment with
-your desired system parameters. The ConfigMap must contain a key named
-`system-params.json` with a valid JSON object containing the system parameters.
+## Configure System Parameters via ConfigMap
+
+### Step 1: Create a System Parameters ConfigMap
+
+In the same namespace as your Materialize environment, create a
+ConfigMap that includes a key named `system-params.json`. Set
+`system-params.json` to a valid JSON object containing your desired system
+parameters.
 
 ```yaml
 apiVersion: v1
@@ -58,12 +62,12 @@ Apply the ConfigMap to your cluster:
 kubectl apply -f system-params-configmap.yaml
 ```
 
-## Configuring the Materialize Custom Resource
+### Step 2: Configure the Materialize Custom Resource
 
 Reference the ConfigMap in your Materialize custom resource by setting the
-`systemParameterConfigmapName` field:
+`systemParameterConfigmapName` field to the name of your ConfigMap:
 
-```yaml
+```yaml {hl_lines="9"}
 apiVersion: materialize.cloud/v1alpha1
 kind: Materialize
 metadata:
@@ -81,19 +85,21 @@ Apply the updated Materialize resource:
 kubectl apply -f materialize.yaml
 ```
 
-## Updating System Parameters
+## Updating ConfigMap System Parameters
 
-To update system parameters, modify the ConfigMap and apply the changes:
+To update system parameters defined in your ConfigMap, you can either:
 
-```shell
-kubectl edit configmap mz-system-params -n materialize-environment
-```
+- Use `kubectl edit configmap` to edit the ConfigMap and apply the changes:
 
-Or update the ConfigMap YAML file and reapply:
+  ```shell
+  kubectl edit configmap mz-system-params -n materialize-environment
+  ```
 
-```shell
-kubectl apply -f system-params-configmap.yaml
-```
+- Or, edit the ConfigMap YAML file and reapply:
+
+  ```shell
+  kubectl apply -f system-params-configmap.yaml
+  ```
 
 ### ConfigMap sync behavior
 
@@ -115,8 +121,9 @@ kubectl annotate materialize <instance-name> \
   --overwrite
 ```
 
-Alternatively, you can add this annotation to your Materialize custom resource
-YAML and update it whenever you need to force a ConfigMap reload:
+Alternatively, you can add the `configmap-reload-trigger` annotation to your
+Materialize custom resource YAML and update it whenever you need to force a
+ConfigMap reload:
 
 ```yaml
 apiVersion: materialize.cloud/v1alpha1
@@ -130,8 +137,10 @@ spec:
   # ... rest of spec
 ```
 
-Note that some parameters may require a restart to take effect even after the
-ConfigMap is synced.
+{{< note >}}
+Even after the ConfigMap is synced, some parameters may require a restart to
+take effect.
+{{< /note >}}
 
 ## Available System Parameters
 
@@ -157,9 +166,9 @@ documentation, or run the following SQL command in your Materialize instance:
 SHOW ALL;
 ```
 
-## Example: Setting Connection Limits
+### Sample ConfigMap: Setting Connection Limits
 
-The following example shows how to configure the maximum number of connections:
+The following sample ConfigMap YAML sets the `max_connections` parameter:
 
 ```yaml
 apiVersion: v1
@@ -174,9 +183,9 @@ data:
     }
 ```
 
-## Example: Configuring Allowed Cluster Sizes
+### Sample ConfigMap: Configuring Allowed Cluster Sizes
 
-The following example shows how to restrict the available cluster replica sizes:
+The following sample ConfigMap YAML sets the `allowed_cluster_replica_sizes` parameter:
 
 ```yaml
 apiVersion: v1
@@ -187,6 +196,25 @@ metadata:
 data:
   system-params.json: |
     {
+      "allowed_cluster_replica_sizes": "'25cc', '50cc', '100cc', '200cc'"
+    }
+```
+
+### Sample ConfigMap: Configuring Connection Limits and Allowed Cluster Sizes
+
+The following sample ConfigMap YAML sets both the `max_connections` parameter
+and the `allowed_cluster_replica_sizes` parameter:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mz-system-params
+  namespace: materialize-environment
+data:
+  system-params.json: |
+    {
+      "max_connections": 500,
       "allowed_cluster_replica_sizes": "'25cc', '50cc', '100cc', '200cc'"
     }
 ```
