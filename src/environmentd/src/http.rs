@@ -209,7 +209,7 @@ impl HttpServer {
                     "/hierarchical-memory",
                     routing::get(memory::handle_hierarchical_memory),
                 )
-                .route("/static/*path", routing::get(root::handle_static));
+                .route("/static/{*path}", routing::get(root::handle_static));
 
             let mut ws_router = Router::new()
                 .route("/api/experimental/sql", routing::get(sql::handle_sql_ws))
@@ -232,7 +232,7 @@ impl HttpServer {
         if routes_enabled.webhook {
             let webhook_router = Router::new()
                 .route(
-                    "/api/webhook/:database/:schema/:id",
+                    "/api/webhook/{:database}/{:schema}/{:id}",
                     routing::post(webhook::handle_webhook),
                 )
                 .with_state(WebhookState {
@@ -317,7 +317,7 @@ impl HttpServer {
                     routing::get(|| async { Redirect::temporary("/internal-console/") }),
                 )
                 .route(
-                    "/internal-console/*path",
+                    "/internal-console/{*path}",
                     routing::get(console::handle_internal_console),
                 )
                 .route(
@@ -333,11 +333,11 @@ impl HttpServer {
             base_router = base_router
                 .route("/clusters", routing::get(cluster::handle_clusters))
                 .route(
-                    "/api/cluster/:cluster_id/replica/:replica_id/process/:process/",
+                    "/api/cluster/{:cluster_id}/replica/{:replica_id}/process/{:process}/",
                     routing::any(cluster::handle_cluster_proxy_root),
                 )
                 .route(
-                    "/api/cluster/:cluster_id/replica/:replica_id/process/:process/*path",
+                    "/api/cluster/{:cluster_id}/replica/{:replica_id}/process/{:process}/{*path}",
                     routing::any(cluster::handle_cluster_proxy),
                 )
                 .layer(Extension(cluster_proxy_config));
