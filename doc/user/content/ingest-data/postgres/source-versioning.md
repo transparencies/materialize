@@ -12,8 +12,7 @@ menu:
 {{< private-preview />}}
 {{< note >}}
 - Changing column types is currently unsupported.
-
-- {{% include-example file="examples/create_table/example_postgres_table"
+{{% include-example file="examples/create_table/example_postgres_table"
 example="syntax-version-requirement" %}}
 {{< /note >}}
 
