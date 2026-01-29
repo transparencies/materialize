@@ -17,25 +17,20 @@ both Cloud and Self-Managed. See [Release schedule](/releases/schedule) for deta
 
 ## v26.9.0
 *Released to Materialize Cloud: 2026-01-29* <br>
-*Released to Materialize Self-Managed: 2026-01-31* <br>
+*Released to Materialize Self-Managed: 2026-01-30* <br>
 
-v26.9 includes improvements to error messaging for the ALTER MATERIALIZED VIEW
-feature, new PostgreSQL-compatible SQL syntax, and several bug fixes for
-connection handling and source ingestion.
+v26.9 includes significant performance improvements to QPS & query latency.
 
 ### Improvements
-- Improved error messages when creating a replacement materialized view with a schema that differs from the target, now showing detailed information about the specific mismatch (column name, type, nullability, or keys).
-- Added `ABORT` as a PostgreSQL-compatible alias for the `ROLLBACK` transaction command, supporting all syntax variants (`ABORT WORK`, `ABORT TRANSACTION`, `ABORT AND CHAIN`, etc.).
-- Improved error messages when the load balancer cannot connect to the upstream environment server, now showing a clear "upstream server not available" message instead of an unhelpful SSL EOF error.
-- Added syntax highlighting in the web console shell for `CREATE REPLACEMENT MATERIALIZED VIEW` and `ALTER MATERIALIZED VIEW ... APPLY REPLACEMENT` statements.
+- **Up to 2.5x increased QPS**: We've significantly optimized how `SELECT` statements are processed; they are now processed outside the main thread. In our tests, this change increased QPS by as much as 2.5x.
+- **Significant reduction in query latency**: Moving `SELECT` statements off the main thread has also improved tail query latency. We've observed an 87% reduction in p99 latency for some workloads.
+- Added `ABORT` as a PostgreSQL-compatible alias for the `ROLLBACK` transaction command, to improve compatibility with GraphQL engines like Hasura
 - Improved performance for `SUBSCRIBE` queries by skipping unnecessary snapshot reads when the subscribe starts at a recent timestamp.
-- `ALTER MATERIALIZED VIEW ... APPLY REPLACEMENT` now waits for the target materialized view's dataflow to catch up to the replacement before cutting over, preventing potential consistency violations.
-- Iceberg sinks using S3 Tables in Materialize Cloud now require the S3 Tables bucket to be in the same AWS region as your Materialize environment to prevent unexpected egress fees.
+- Improved error messages when the load balancer cannot connect to the upstream environment server
 
 ### Bug Fixes
-- Fixed a bug where Materialize could panic during startup when using altered materialized views that depend on items with greater catalog IDs.
+- Fixed an issue causing new generations to be promoted prematurely when using the `WaitUntilReady` upgrade strategy (<red>*Materialize Self-Managed only*</red>)
 - Fixed a bug where dropping a replica concurrently with query execution could cause errors.
-- Fixed a bug where broken idle connections to CockroachDB were not detected for up to 2 hours, now using more aggressive TCP keepalive settings to detect broken connections within 10 seconds.
 - Fixed a race condition in source reclock that could cause panics when the `as_of` timestamp was newer than the cached upper bound.
 
 ## v26.8.0
