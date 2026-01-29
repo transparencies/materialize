@@ -26,13 +26,12 @@ v26.9 includes significant performance improvements to QPS & query latency.
 - **Significant reduction in query latency**: Moving `SELECT` statements off the main thread has also improved tail query latency. We've observed an 87% reduction in p99 latency for some workloads.
 - **Dynamically configure system parameters** (<red>*Materialize Self-Managed only*</red>): You can now use a ConfigMap to dynamically update system parameters at runtime. This means you don't need to restart Materialize for new system parameters to take effect. You can also specify system parameters which survive restarts and upgrades. Refer to our [documentation on configuring system parameters](/self-managed-deployments/configuration-system-parameters/#configure-system-parameters-via-configmap).
 - Added `ABORT` as a PostgreSQL-compatible alias for the `ROLLBACK` transaction command, to improve compatibility with GraphQL engines like Hasura
-- Improved performance for `SUBSCRIBE` queries by skipping unnecessary snapshot reads when the subscribe starts at a recent timestamp.
-- Improved error messages when the load balancer cannot connect to the upstream environment server
 
 ### Bug Fixes
 - Fixed an issue causing new generations to be promoted prematurely when using the `WaitUntilReady` upgrade strategy (<red>*Materialize Self-Managed only*</red>)
 - Fixed a bug where dropping a replica concurrently with query execution could cause errors.
 - Fixed a race condition in source reclock that could cause panics when the `as_of` timestamp was newer than the cached upper bound.
+- Improved error messages when the load balancer cannot connect to the upstream environment server
 
 ## v26.8.0
 *Released to Materialize Cloud: 2026-01-22* <br>
