@@ -54,11 +54,11 @@ SELECT *, 'c' AS origin FROM schema_c.my_table
 Explained Query:
   Union
     Map ("a")
-      ReadIndex on=my_table my_idx=[*** full scan ***]
+      ReadIndex on=my_table materialize.schema_a.my_idx=[*** full scan ***]
     Map ("b")
-      ReadIndex on=my_table my_idx=[*** full scan ***]
+      ReadIndex on=my_table materialize.schema_b.my_idx=[*** full scan ***]
     Map ("c")
-      ReadIndex on=my_table my_idx=[*** full scan ***]
+      ReadIndex on=my_table materialize.schema_c.my_idx=[*** full scan ***]
 
 Used Indexes:
   - materialize.schema_a.my_idx (*** full scan ***)
@@ -81,11 +81,11 @@ SELECT *, 'c' AS origin FROM schema_c.my_table
 Explained Query:
   Union
     Map ("a")
-      ReadIndex on=my_table my_idx=[*** full scan ***]
+      ReadIndex on=my_table materialize.schema_a.my_idx=[*** full scan ***]
     Map ("b")
-      ReadIndex on=my_table my_idx=[*** full scan ***]
+      ReadIndex on=my_table materialize.schema_b.my_idx=[*** full scan ***]
     Map ("c")
-      ReadIndex on=my_table my_idx=[*** full scan ***]
+      ReadIndex on=my_table materialize.schema_c.my_idx=[*** full scan ***]
 
 Used Indexes:
   - materialize.schema_a.my_idx (*** full scan ***)
