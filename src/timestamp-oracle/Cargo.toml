@@ -15,7 +15,9 @@ async-trait = "0.1.89"
 dec = "0.4.8"
 deadpool-postgres = "0.10.3"
 futures = "0.3.31"
+futures-util = "0.3.31"
 mz-adapter-types = { path = "../adapter-types" }
+mz-foundationdb = { path = "../foundationdb", default-features = false, optional = true }
 mz-ore = { path = "../ore", features = ["chrono", "async", "tracing"] }
 mz-pgrepr = { path = "../pgrepr" }
 mz-postgres-client = { path = "../postgres-client" }
@@ -28,8 +30,12 @@ tracing = "0.1.44"
 uuid = { version = "1.19.0", features = ["v4"] }
 workspace-hack = { version = "0.0.0", path = "../workspace-hack", optional = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+mz-foundationdb = { path = "../foundationdb", default-features = false }
+
 [package.metadata.cargo-udeps.ignore]
 normal = ["workspace-hack"]
 
 [features]
 default = ["workspace-hack"]
+foundationdb = ["mz-foundationdb"]

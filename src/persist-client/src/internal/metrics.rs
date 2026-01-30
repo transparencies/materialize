@@ -3007,17 +3007,15 @@ impl Consensus for MetricsConsensus {
     }
 
     #[instrument(name = "consensus::truncate", fields(shard=key))]
-    async fn truncate(&self, key: &str, seqno: SeqNo) -> Result<usize, ExternalError> {
-        let deleted = self
-            .metrics
-            .consensus
+    async fn truncate(&self, key: &str, seqno: SeqNo) -> Result<Option<usize>, ExternalError> {
+        let metrics = &self.metrics.consensus;
+        let deleted = metrics
             .truncate
             .run_op(|| self.consensus.truncate(key, seqno), Self::on_err)
             .await?;
-        self.metrics
-            .consensus
-            .truncated_count
-            .inc_by(u64::cast_from(deleted));
+        if let Some(deleted) = deleted {
+            metrics.truncated_count.inc_by(u64::cast_from(deleted));
+        }
         Ok(deleted)
     }
 }
