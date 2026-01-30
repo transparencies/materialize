@@ -26,7 +26,7 @@ v26.9 includes significant performance improvements to QPS & query latency.
 ![Chart of QPS before/after](/images/releases/v2609_qps.png)
 - **Significant reduction in query latency**: Moving `SELECT` statements off the main thread has significantly latency. p99 has reduced by up to 50% for some workloads.
 ![Chart of latency before/after](/images/releases/v2609_latency.png)
-- **Dynamically configure system parameters** (<red>*Materialize Self-Managed only*</red>): You can now use a ConfigMap to dynamically update system parameters at runtime. In many cases, this means you don't need to restart Materialize for new system parameters to take effect. You can also specify system parameters which survive restarts and upgrades. Refer to our [documentation on configuring system parameters](/self-managed-deployments/configuration-system-parameters/#configure-system-parameters-via-configmap).
+- **Dynamically configure system parameters using a ConfigMap** (<red>*Materialize Self-Managed only*</red>): You can now use a ConfigMap to dynamically update system parameters at runtime. In many cases, this means you don't need to restart Materialize for new system parameters to take effect. You can also specify system parameters which survive restarts and upgrades. Refer to our [documentation on configuring system parameters](/self-managed-deployments/configuration-system-parameters/#configure-system-parameters-via-configmap).
 - Added `ABORT` as a PostgreSQL-compatible alias for the `ROLLBACK` transaction command, to improve compatibility with GraphQL engines like Hasura
 
 ### Bug Fixes
