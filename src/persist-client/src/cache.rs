@@ -30,7 +30,7 @@ use mz_persist::location::{
 };
 use mz_persist_types::{Codec, Codec64};
 use timely::progress::Timestamp;
-use tokio::sync::{Mutex, OnceCell};
+use tokio::sync::{Mutex, OnceCell, Semaphore};
 use tracing::debug;
 
 use crate::async_runtime::IsolatedRuntime;
@@ -604,6 +604,7 @@ pub(crate) struct LockingTypedState<K, V, T, D> {
     cfg: Arc<PersistConfig>,
     metrics: Arc<Metrics>,
     shard_metrics: Arc<ShardMetrics>,
+    pub(crate) update_semaphore: Semaphore,
     /// A [SchemaCacheMaps<K, V>], but stored as an Any so the `: Codec` bounds
     /// don't propagate to basically every struct in persist.
     schema_cache: Arc<dyn Any + Send + Sync>,
@@ -619,6 +620,7 @@ impl<K, V, T: Debug, D> Debug for LockingTypedState<K, V, T, D> {
             cfg: _cfg,
             metrics: _metrics,
             shard_metrics: _shard_metrics,
+            update_semaphore: _,
             schema_cache: _schema_cache,
             _subscription_token,
         } = self;
@@ -645,6 +647,7 @@ impl<K: Codec, V: Codec, T, D> LockingTypedState<K, V, T, D> {
             state: RwLock::new(initial_state),
             cfg: Arc::clone(&cfg),
             shard_metrics: metrics.shards.shard(&shard_id, &diagnostics.shard_name),
+            update_semaphore: Semaphore::new(1),
             schema_cache: Arc::new(SchemaCacheMaps::<K, V>::new(&metrics.schema)),
             metrics,
             _subscription_token: subscription_token,
