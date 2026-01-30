@@ -13,7 +13,7 @@
 
 mode cockroach
 
-# Create multiple schemas with identically named tables and indexes
+# Create multiple schemas, two with identically named indexes, one with a different index name.
 statement ok
 CREATE SCHEMA schema_a
 
@@ -39,10 +39,10 @@ statement ok
 CREATE INDEX my_idx ON schema_b.my_table(id)
 
 statement ok
-CREATE INDEX my_idx ON schema_c.my_table(id)
+CREATE INDEX my_idx_foo ON schema_c.my_table(id)
 
-# Test EXPLAIN with UNION ALL that reads from all three schemas
-# The index names should be qualified to disambiguate them
+# Test EXPLAIN with UNION ALL that reads from two schemas with the same index names and one with a different index name.
+# The first two index names should be qualified to disambiguate them. The third should not be qualified.
 query T multiline
 EXPLAIN OPTIMIZED PLAN AS TEXT FOR
 SELECT *, 'a' AS origin FROM schema_a.my_table
@@ -58,12 +58,12 @@ Explained Query:
     Map ("b")
       ReadIndex on=my_table materialize.schema_b.my_idx=[*** full scan ***]
     Map ("c")
-      ReadIndex on=my_table materialize.schema_c.my_idx=[*** full scan ***]
+      ReadIndex on=my_table my_idx_foo=[*** full scan ***]
 
 Used Indexes:
   - materialize.schema_a.my_idx (*** full scan ***)
   - materialize.schema_b.my_idx (*** full scan ***)
-  - materialize.schema_c.my_idx (*** full scan ***)
+  - materialize.schema_c.my_idx_foo (*** full scan ***)
 
 Target cluster: quickstart
 
@@ -85,12 +85,12 @@ Explained Query:
     Map ("b")
       ReadIndex on=my_table materialize.schema_b.my_idx=[*** full scan ***]
     Map ("c")
-      ReadIndex on=my_table materialize.schema_c.my_idx=[*** full scan ***]
+      ReadIndex on=my_table my_idx_foo=[*** full scan ***]
 
 Used Indexes:
   - materialize.schema_a.my_idx (*** full scan ***)
   - materialize.schema_b.my_idx (*** full scan ***)
-  - materialize.schema_c.my_idx (*** full scan ***)
+  - materialize.schema_c.my_idx_foo (*** full scan ***)
 
 Target cluster: quickstart
 
