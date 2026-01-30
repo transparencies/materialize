@@ -179,7 +179,7 @@ steps:
 
       - id: lint-doctests
         label: Doctests
-        command: bin/ci-builder run stable ci/test/lint-doc.sh
+        command: bin/ci-builder run nightly ci/test/lint-doc.sh
         inputs:
           - Cargo.lock
           - Cargo.toml

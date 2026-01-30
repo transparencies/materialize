@@ -35,12 +35,13 @@ export RUSTDOCFLAGS
 target=${CARGO_TARGET_DIR:-target}
 
 CARGO_DOC_OUTPUT=$(mktemp)
-if ! cargo doc --all-features "$@" 2> "$CARGO_DOC_OUTPUT"; then
+# TODO: Remove -Zrustdoc-mergeable-info when https://github.com/rust-lang/rust/issues/146895 is fixed
+if ! cargo doc --all-features -Zrustdoc-mergeable-info "$@" 2> "$CARGO_DOC_OUTPUT"; then
   if grep -q "invalid template" "$CARGO_DOC_OUTPUT"; then
     echo "Failed due to invalid template, nuking doc directory and retrying from scratch"
     rm -f "$CARGO_DOC_OUTPUT"
     rm -rf "$target"/doc
-    cargo doc --all-features "$@"
+    cargo doc --all-features -Zrustdoc-mergeable-info "$@"
   else
     echo "cargo doc failed:"
     cat "$CARGO_DOC_OUTPUT"
