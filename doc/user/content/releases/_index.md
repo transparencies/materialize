@@ -30,7 +30,6 @@ v26.9 includes significant performance improvements to QPS & query latency.
 
 ### Bug Fixes
 - Fixed an issue causing new generations to be promoted prematurely when using the `WaitUntilReady` upgrade strategy (<red>*Materialize Self-Managed only*</red>)
-- Fixed a bug where dropping a replica concurrently with query execution could cause errors.
 - Fixed a race condition in source reclock that could cause panics when the `as_of` timestamp was newer than the cached upper bound.
 - Improved error messages when the load balancer cannot connect to the upstream environment server
 
