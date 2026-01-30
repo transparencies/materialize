@@ -20,6 +20,9 @@
 set -euo pipefail
 
 pipeline=${1:-test}
+if [ "$#" -gt 0 ]; then
+  shift
+fi
 bootstrap_steps=
 tmpfile=$(mktemp)
 
