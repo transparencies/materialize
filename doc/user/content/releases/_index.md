@@ -15,6 +15,25 @@ Starting with the v26.1.0 release, Materialize releases on a weekly schedule for
 both Cloud and Self-Managed. See [Release schedule](/releases/schedule) for details.
 {{</ note >}}
 
+## v26.9.0
+*Released to Materialize Cloud: 2026-01-29* <br>
+*Released to Materialize Self-Managed: 2026-01-30* <br>
+
+v26.9 includes significant performance improvements to QPS & query latency.
+
+### Improvements
+- **Up to 2.5x increased QPS**: We've significantly optimized how `SELECT` statements are processed; they are now processed outside the main thread. In our tests, this change increased QPS by as much as 2.5x.
+![Chart of QPS before/after](/images/releases/v2609_qps.png)
+- **Significant reduction in query latency**: Moving `SELECT` statements off the main thread has significantly latency. p99 has reduced by up to 50% for some workloads.
+![Chart of latency before/after](/images/releases/v2609_latency.png)
+- **Dynamically configure system parameters using a ConfigMap** (<red>*Materialize Self-Managed only*</red>): You can now use a ConfigMap to dynamically update system parameters at runtime. In many cases, this means you don't need to restart Materialize for new system parameters to take effect. You can also specify system parameters which survive restarts and upgrades. Refer to our [documentation on configuring system parameters](/self-managed-deployments/configuration-system-parameters/#configure-system-parameters-via-configmap).
+- Added `ABORT` as a PostgreSQL-compatible alias for the `ROLLBACK` transaction command, to improve compatibility with GraphQL engines like Hasura
+
+### Bug Fixes
+- Fixed an issue causing new generations to be promoted prematurely when using the `WaitUntilReady` upgrade strategy (<red>*Materialize Self-Managed only*</red>)
+- Fixed a race condition in source reclock that could cause panics when the `as_of` timestamp was newer than the cached upper bound.
+- Improved error messages when the load balancer cannot connect to the upstream environment server
+
 ## v26.8.0
 *Released to Materialize Cloud: 2026-01-22* <br>
 *Released to Materialize Self-Managed: 2026-01-23* <br>
