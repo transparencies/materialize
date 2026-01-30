@@ -427,7 +427,7 @@ impl Plan {
             humanizer: humanizer.unwrap_or(&DummyHumanizer),
             annotations: BTreeMap::default(),
             config,
-            ambiguous_ids: BTreeSet::default(), // Don't bother disambiguating (qualifying) any lookalike IDs.
+            ambiguous_ids: BTreeSet::default(),
         })
     }
 }

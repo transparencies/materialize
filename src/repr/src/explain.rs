@@ -414,10 +414,7 @@ impl<'a, T> PlanRenderingContext<'a, T> {
     }
 
     /// Unqualified names where unambiguous. Qualified names otherwise.
-    pub fn humanize_id_unambiguously(
-        &self,
-        id: GlobalId
-    ) -> Option<String> {
+    pub fn humanize_id_maybe_unqualified(&self, id: GlobalId) -> Option<String> {
         if self.ambiguous_ids.contains(&id) {
             self.humanizer.humanize_id(id)
         } else {
@@ -799,7 +796,12 @@ impl UsedIndexes {
             by_humanization.entry(hum).or_default().insert(id);
         }
 
-        by_humanization.values().filter(|ids| ids.len() > 1).flatten().cloned().collect()
+        by_humanization
+            .values()
+            .filter(|ids| ids.len() > 1)
+            .flatten()
+            .cloned()
+            .collect()
     }
 }
 

@@ -1422,7 +1422,13 @@ mod tests {
         let ctx_gen = || {
             let indent = Indent::default();
             let annotations = BTreeMap::new();
-            PlanRenderingContext::<FastPathPlan>::new(indent, &humanizer, annotations, &config, BTreeSet::default())
+            PlanRenderingContext::<FastPathPlan>::new(
+                indent,
+                &humanizer,
+                annotations,
+                &config,
+                BTreeSet::default(),
+            )
         };
 
         let constant_err_exp = "Error \"division by zero\"\n";

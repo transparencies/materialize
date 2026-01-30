@@ -9,7 +9,7 @@
 
 //! `EXPLAIN ... AS TEXT` support for structures defined in this crate.
 
-use std::collections::{BTreeMap};
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -467,12 +467,11 @@ impl MirRelationExpr {
                                 .unwrap_or_else(|| id.to_string())
                         };
                         let humanize_unqualified = |id: &GlobalId| {
-                            ctx.humanize_id_unambiguously(*id)
+                            ctx.humanize_id_maybe_unqualified(*id)
                                 .unwrap_or_else(|| id.to_string())
                         };
                         let humanize_unqualified_maybe_deleted = |id: &GlobalId| {
-                            ctx
-                                .humanize_id_unambiguously(*id)
+                            ctx.humanize_id_maybe_unqualified(*id)
                                 .unwrap_or_else(|| "[DELETED INDEX]".to_owned())
                         };
                         match persist_or_index {
@@ -949,7 +948,7 @@ impl MirRelationExpr {
             .humanize_id(*coll_id)
             .unwrap_or_else(|| coll_id.to_string());
         let humanized_index = ctx
-            .humanize_id_unambiguously(*idx_id)
+            .humanize_id_maybe_unqualified(*idx_id)
             .unwrap_or_else(|| "[DELETED INDEX]".to_owned());
         if let Some(constants) = constants {
             write!(
