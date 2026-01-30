@@ -55,7 +55,6 @@ pub struct Applier<K, V, T, D> {
     pub(crate) metrics: Arc<Metrics>,
     pub(crate) shard_metrics: Arc<ShardMetrics>,
     pub(crate) state_versions: Arc<StateVersions>,
-    shared_states: Arc<StateCache>,
     pubsub_sender: Arc<dyn PubSubSender>,
     pub(crate) shard_id: ShardId,
 
@@ -78,7 +77,6 @@ impl<K, V, T: Clone, D> Clone for Applier<K, V, T, D> {
             metrics: Arc::clone(&self.metrics),
             shard_metrics: Arc::clone(&self.shard_metrics),
             state_versions: Arc::clone(&self.state_versions),
-            shared_states: Arc::clone(&self.shared_states),
             pubsub_sender: Arc::clone(&self.pubsub_sender),
             shard_id: self.shard_id,
             state: Arc::clone(&self.state),
@@ -119,7 +117,6 @@ where
             metrics,
             shard_metrics,
             state_versions,
-            shared_states,
             pubsub_sender,
             shard_id,
             state,
