@@ -1504,7 +1504,7 @@ class IcebergSink(Sink):
 
 > INSERT INTO {source_name} VALUES (0, 0);
 
->[version>=2601000] CREATE SINK iceberg_sink
+>[version>=2600900] CREATE SINK iceberg_sink
   IN CLUSTER sink_cluster
   FROM {source_name}
   INTO ICEBERG CATALOG CONNECTION polaris_conn (
@@ -1516,7 +1516,7 @@ class IcebergSink(Sink):
   MODE UPSERT
   WITH (COMMIT INTERVAL '1s');
 
->[version<2601000] CREATE SINK iceberg_sink
+>[version<2600900] CREATE SINK iceberg_sink
   IN CLUSTER sink_cluster
   FROM {source_name}
   INTO ICEBERG CATALOG CONNECTION polaris_conn (

@@ -48,7 +48,7 @@
     )
     USING AWS CONNECTION nested_aws_conn
     KEY (id) NOT ENFORCED
-    ENVELOPE UPSERT
+    MODE UPSERT
     WITH (COMMIT INTERVAL '1s');
 
 $ sleep-is-probably-flaky-i-have-justified-my-need-with-a-comment duration=10s
@@ -97,7 +97,7 @@ SELECT id, name, addr.street, addr.city, addr.zip FROM iceberg_scan('s3://test-b
     )
     USING AWS CONNECTION nested_aws_conn
     KEY (id) NOT ENFORCED
-    ENVELOPE UPSERT
+    MODE UPSERT
     WITH (COMMIT INTERVAL '1s');
 
 $ sleep-is-probably-flaky-i-have-justified-my-need-with-a-comment duration=10s
@@ -129,7 +129,7 @@ SELECT id, data.inner.x, data.inner.y, data.z FROM iceberg_scan('s3://test-bucke
     )
     USING AWS CONNECTION nested_aws_conn
     KEY (id) NOT ENFORCED
-    ENVELOPE UPSERT
+    MODE UPSERT
     WITH (COMMIT INTERVAL '1s');
 
 $ sleep-is-probably-flaky-i-have-justified-my-need-with-a-comment duration=10s
