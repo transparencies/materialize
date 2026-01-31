@@ -410,18 +410,17 @@ steps:
               args: [--default-size=8, --azurite, --slow]
 
       - id: testdrive-fdb
-        label: "Testdrive (FoundationDB)"
+        label: "testdrive with FoundationDB"
         depends_on: build-aarch64
-        timeout_in_minutes: 40
+        timeout_in_minutes: 180
         inputs: [test/testdrive]
-        parallelism: 20
         plugins:
           - ./ci/plugins/mzcompose:
               composition: testdrive
               env:
                 - EXTERNAL_METADATA_STORE: foundationdb
         agents:
-          queue: hetzner-aarch64-8cpu-16gb
+          queue: hetzner-aarch64-4cpu-8gb
 
       - id: testdrive-in-cloudtest
         label: "Full Testdrive in Cloudtest (K8s)"
