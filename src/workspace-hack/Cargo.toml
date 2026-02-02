@@ -81,7 +81,7 @@ hashbrown-582f2526e08bb6a0 = { package = "hashbrown", version = "0.14.5", defaul
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16.1" }
 hyper-582f2526e08bb6a0 = { package = "hyper", version = "0.14.32", features = ["client", "http1", "http2", "stream", "tcp"] }
 hyper-util = { version = "0.1.19", features = ["client-legacy", "server-auto", "service", "tracing"] }
-indexmap = { version = "2.11.4" }
+indexmap = { version = "2.11.4", features = ["serde"] }
 insta = { version = "1.45.1", features = ["json"] }
 itertools = { version = "0.13.0" }
 jiff = { version = "0.2.18", features = ["serde"] }
@@ -235,7 +235,7 @@ hashbrown-582f2526e08bb6a0 = { package = "hashbrown", version = "0.14.5", defaul
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16.1" }
 hyper-582f2526e08bb6a0 = { package = "hyper", version = "0.14.32", features = ["client", "http1", "http2", "stream", "tcp"] }
 hyper-util = { version = "0.1.19", features = ["client-legacy", "server-auto", "service", "tracing"] }
-indexmap = { version = "2.11.4" }
+indexmap = { version = "2.11.4", features = ["serde"] }
 insta = { version = "1.45.1", features = ["json"] }
 itertools = { version = "0.13.0" }
 jiff = { version = "0.2.18", features = ["serde"] }
