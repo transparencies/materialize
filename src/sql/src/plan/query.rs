@@ -5629,53 +5629,56 @@ fn plan_is_expr<'a>(
     construct: &IsExprConstruct<Aug>,
     not: bool,
 ) -> Result<HirScalarExpr, PlanError> {
-    let expr = plan_expr(ecx, expr)?;
-    let mut expr = match construct {
+    let expr_hir = plan_expr(ecx, expr)?;
+
+    let mut result = match construct {
         IsExprConstruct::Null => {
             // PostgreSQL can plan `NULL IS NULL` but not `$1 IS NULL`. This is
             // at odds with our type coercion rules, which treat `NULL` literals
             // and unconstrained parameters identically. Providing a type hint
             // of string means we wind up supporting both.
-            let expr = expr.type_as_any(ecx)?;
-            expr.call_is_null()
+            expr_hir.type_as_any(ecx)?.call_is_null()
         }
-        IsExprConstruct::Unknown => {
-            let expr = expr.type_as(ecx, &SqlScalarType::Bool)?;
-            expr.call_is_null()
-        }
-        IsExprConstruct::True => {
-            let expr = expr.type_as(ecx, &SqlScalarType::Bool)?;
-            expr.call_unary(UnaryFunc::IsTrue(expr_func::IsTrue))
-        }
-        IsExprConstruct::False => {
-            let expr = expr.type_as(ecx, &SqlScalarType::Bool)?;
-            expr.call_unary(UnaryFunc::IsFalse(expr_func::IsFalse))
-        }
+        IsExprConstruct::Unknown => expr_hir.type_as(ecx, &SqlScalarType::Bool)?.call_is_null(),
+        IsExprConstruct::True => expr_hir
+            .type_as(ecx, &SqlScalarType::Bool)?
+            .call_unary(UnaryFunc::IsTrue(expr_func::IsTrue)),
+        IsExprConstruct::False => expr_hir
+            .type_as(ecx, &SqlScalarType::Bool)?
+            .call_unary(UnaryFunc::IsFalse(expr_func::IsFalse)),
         IsExprConstruct::DistinctFrom(expr2) => {
-            let expr1 = expr.type_as_any(ecx)?;
-            let expr2 = plan_expr(ecx, expr2)?.type_as_any(ecx)?;
             // There are three cases:
             // 1. Both terms are non-null, in which case the result should be `a != b`.
             // 2. Exactly one term is null, in which case the result should be true.
             // 3. Both terms are null, in which case the result should be false.
             //
             // (a != b OR a IS NULL OR b IS NULL) AND (a IS NOT NULL OR b IS NOT NULL)
+
+            // We'll need `expr != expr2`, but don't just construct this HIR directly. Instead,
+            // construct an AST expression for `expr != expr2` and plan it to get proper type
+            // checking, implicit casts, etc. (This seems to be also what Postgres does.)
+            let ne_ast = expr.clone().not_equals(expr2.as_ref().clone());
+            let ne_hir = plan_expr(ecx, &ne_ast)?.type_as_any(ecx)?;
+
+            let expr1_hir = expr_hir.type_as_any(ecx)?;
+            let expr2_hir = plan_expr(ecx, expr2)?.type_as_any(ecx)?;
+
             let term1 = HirScalarExpr::variadic_or(vec![
-                expr1.clone().call_binary(expr2.clone(), expr_func::NotEq),
-                expr1.clone().call_is_null(),
-                expr2.clone().call_is_null(),
+                ne_hir,
+                expr1_hir.clone().call_is_null(),
+                expr2_hir.clone().call_is_null(),
             ]);
             let term2 = HirScalarExpr::variadic_or(vec![
-                expr1.call_is_null().not(),
-                expr2.call_is_null().not(),
+                expr1_hir.call_is_null().not(),
+                expr2_hir.call_is_null().not(),
             ]);
             term1.and(term2)
         }
     };
     if not {
-        expr = expr.not();
+        result = result.not();
     }
-    Ok(expr)
+    Ok(result)
 }
 
 fn plan_case<'a>(
