@@ -128,10 +128,10 @@ use mz_compute_types::plan::LirId;
 use mz_compute_types::plan::render_plan::{
     self, BindStage, LetBind, LetFreePlan, RecBind, RenderPlan,
 };
-use mz_expr::{EvalError, Id, LocalId};
+use mz_expr::{EvalError, Id, LocalId, permutation_for_arrangement};
 use mz_persist_client::operators::shard_source::{ErrorHandler, SnapshotMode};
 use mz_repr::explain::DummyHumanizer;
-use mz_repr::{Datum, DatumVec, Diff, GlobalId, Row, SharedRow};
+use mz_repr::{Datum, DatumVec, Diff, GlobalId, Row, SharedRow, SqlRelationType};
 use mz_storage_operators::persist_source;
 use mz_storage_types::controller::CollectionMetadata;
 use mz_storage_types::errors::DataflowError;
@@ -394,6 +394,7 @@ pub fn build_compute_dataflow<A: Allocate>(
                         input_probe,
                         *idx_id,
                         &idx.desc,
+                        &idx.typ,
                         snapshot_mode,
                         start_signal.clone(),
                     );
@@ -503,6 +504,7 @@ pub fn build_compute_dataflow<A: Allocate>(
                         input_probe,
                         *idx_id,
                         &idx.desc,
+                        &idx.typ,
                         snapshot_mode,
                         start_signal.clone(),
                     );
@@ -597,6 +599,7 @@ where
         input_probe: probe::Handle<mz_repr::Timestamp>,
         idx_id: GlobalId,
         idx: &IndexDesc,
+        typ: &SqlRelationType,
         snapshot_mode: SnapshotMode,
         start_signal: StartSignal,
     ) {
@@ -646,6 +649,8 @@ where
                     // So: when the snapshot is excluded, we import only the (filtered) collection itself and ignore the arrangement.
                     let oks = {
                         let mut datums = DatumVec::new();
+                        let (permutation, _thinning) =
+                            permutation_for_arrangement(&idx.key, typ.arity());
                         self.import_filtered_index_collection(
                             oks,
                             start_signal.clone(),
@@ -653,7 +658,7 @@ where
                                 let mut datums_borrow = datums.borrow();
                                 datums_borrow.extend(k);
                                 datums_borrow.extend(v);
-                                SharedRow::pack(&**datums_borrow)
+                                SharedRow::pack(permutation.iter().map(|i| datums_borrow[*i]))
                             },
                         )
                     };
