@@ -41,6 +41,9 @@ where
             self.context.humanizer,
             self.plan.annotations.clone(),
             self.context.config,
+            self.context
+                .used_indexes
+                .ambiguous_ids(self.context.humanizer),
         );
 
         let mode = HumanizedExplain::new(self.context.config.redacted);
@@ -103,6 +106,9 @@ where
                 ctx.humanizer,
                 plan.annotations.clone(),
                 self.context.config,
+                self.context
+                    .used_indexes
+                    .ambiguous_ids(self.context.humanizer),
             );
 
             if no > 0 {
@@ -461,13 +467,11 @@ impl MirRelationExpr {
                                 .unwrap_or_else(|| id.to_string())
                         };
                         let humanize_unqualified = |id: &GlobalId| {
-                            ctx.humanizer
-                                .humanize_id_unqualified(*id)
+                            ctx.humanize_id_maybe_unqualified(*id)
                                 .unwrap_or_else(|| id.to_string())
                         };
                         let humanize_unqualified_maybe_deleted = |id: &GlobalId| {
-                            ctx.humanizer
-                                .humanize_id_unqualified(*id)
+                            ctx.humanize_id_maybe_unqualified(*id)
                                 .unwrap_or_else(|| "[DELETED INDEX]".to_owned())
                         };
                         match persist_or_index {
@@ -944,8 +948,7 @@ impl MirRelationExpr {
             .humanize_id(*coll_id)
             .unwrap_or_else(|| coll_id.to_string());
         let humanized_index = ctx
-            .humanizer
-            .humanize_id_unqualified(*idx_id)
+            .humanize_id_maybe_unqualified(*idx_id)
             .unwrap_or_else(|| "[DELETED INDEX]".to_owned());
         if let Some(constants) = constants {
             write!(

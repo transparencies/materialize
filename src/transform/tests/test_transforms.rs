@@ -101,6 +101,7 @@ fn handle_explain(
         humanizer: context.humanizer,
         annotations: annotated_plan.annotations.clone(),
         config: &config,
+        ambiguous_ids: BTreeSet::default(),
     })
 }
 

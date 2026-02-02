@@ -392,6 +392,8 @@ pub struct PlanRenderingContext<'a, T> {
     pub humanizer: &'a dyn ExprHumanizer,
     pub annotations: BTreeMap<&'a T, Analyses>,
     pub config: &'a ExplainConfig,
+    /// IDs that must be qualified in the output.
+    pub ambiguous_ids: BTreeSet<GlobalId>,
 }
 
 impl<'a, T> PlanRenderingContext<'a, T> {
@@ -400,12 +402,23 @@ impl<'a, T> PlanRenderingContext<'a, T> {
         humanizer: &'a dyn ExprHumanizer,
         annotations: BTreeMap<&'a T, Analyses>,
         config: &'a ExplainConfig,
+        ambiguous_ids: BTreeSet<GlobalId>,
     ) -> PlanRenderingContext<'a, T> {
         PlanRenderingContext {
             indent,
             humanizer,
             annotations,
             config,
+            ambiguous_ids,
+        }
+    }
+
+    /// Unqualified names where unambiguous. Qualified names otherwise.
+    pub fn humanize_id_maybe_unqualified(&self, id: GlobalId) -> Option<String> {
+        if self.ambiguous_ids.contains(&id) {
+            self.humanizer.humanize_id(id)
+        } else {
+            self.humanizer.humanize_id_unqualified(id)
         }
     }
 }
@@ -769,6 +782,26 @@ impl UsedIndexes {
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    /// Find all IDs with colliding (unqualified) humanizations.
+    pub fn ambiguous_ids(&self, humanizer: &dyn ExprHumanizer) -> BTreeSet<GlobalId> {
+        let humanized = self
+            .0
+            .iter()
+            .flat_map(|(id, _)| humanizer.humanize_id_unqualified(*id).map(|hum| (hum, *id)));
+
+        let mut by_humanization = BTreeMap::<String, BTreeSet<GlobalId>>::new();
+        for (hum, id) in humanized {
+            by_humanization.entry(hum).or_default().insert(id);
+        }
+
+        by_humanization
+            .values()
+            .filter(|ids| ids.len() > 1)
+            .flatten()
+            .cloned()
+            .collect()
     }
 }
 

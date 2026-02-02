@@ -427,6 +427,7 @@ impl Plan {
             humanizer: humanizer.unwrap_or(&DummyHumanizer),
             annotations: BTreeMap::default(),
             config,
+            ambiguous_ids: BTreeSet::default(),
         })
     }
 }
