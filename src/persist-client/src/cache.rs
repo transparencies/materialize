@@ -12,6 +12,7 @@
 use std::any::Any;
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::convert::Infallible;
 use std::fmt::Debug;
 use std::future::Future;
 use std::sync::{Arc, RwLock, TryLockError, Weak};
@@ -30,7 +31,7 @@ use mz_persist::location::{
 };
 use mz_persist_types::{Codec, Codec64};
 use timely::progress::Timestamp;
-use tokio::sync::{Mutex, OnceCell, Semaphore};
+use tokio::sync::{Mutex, OnceCell, oneshot};
 use tracing::debug;
 
 use crate::async_runtime::IsolatedRuntime;
@@ -604,7 +605,7 @@ pub(crate) struct LockingTypedState<K, V, T, D> {
     cfg: Arc<PersistConfig>,
     metrics: Arc<Metrics>,
     shard_metrics: Arc<ShardMetrics>,
-    pub(crate) update_semaphore: Semaphore,
+    update_semaphore: Mutex<Option<(tokio::time::Instant, oneshot::Receiver<Infallible>)>>,
     /// A [SchemaCacheMaps<K, V>], but stored as an Any so the `: Codec` bounds
     /// don't propagate to basically every struct in persist.
     schema_cache: Arc<dyn Any + Send + Sync>,
@@ -647,7 +648,7 @@ impl<K: Codec, V: Codec, T, D> LockingTypedState<K, V, T, D> {
             state: RwLock::new(initial_state),
             cfg: Arc::clone(&cfg),
             shard_metrics: metrics.shards.shard(&shard_id, &diagnostics.shard_name),
-            update_semaphore: Semaphore::new(1),
+            update_semaphore: Mutex::new(None),
             schema_cache: Arc::new(SchemaCacheMaps::<K, V>::new(&metrics.schema)),
             metrics,
             _subscription_token: subscription_token,
@@ -718,6 +719,24 @@ impl<K, V, T, D> LockingTypedState<K, V, T, D> {
         // this out of the lock window, see [StateWatchNotifier::notify].
         drop(state);
         ret
+    }
+
+    /// We want to _mostly_ just attempt a single cmd against the same state at once, since
+    /// only one concurrent command can succeed. However, we also want to guard against a
+    /// single hung command blocking all progress globally. We manage this with a shared Tokio mutex.
+    /// Each command will grab the mutex, wait for the previous command to complete or time out,
+    /// and record its own deadline and a completion future in the mutex. If the timeout is never hit,
+    /// this behaves like a semaphore with limit 1... but if our requests _are_ timing out, future
+    /// requests will only wait for a bounded time.
+    pub(crate) async fn lease_for_update(&self) -> impl Drop {
+        let mut guard = self.update_semaphore.lock().await;
+        if let Some((deadline, rx)) = guard.take() {
+            let _ = tokio::time::timeout_at(deadline, rx).await;
+        }
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+        let (tx, rx) = oneshot::channel();
+        *guard = Some((deadline, rx));
+        tx
     }
 
     pub(crate) fn notifier(&self) -> &StateWatchNotifier {
