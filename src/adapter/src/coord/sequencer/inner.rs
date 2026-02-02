@@ -2716,7 +2716,34 @@ impl Coordinator {
                 None => false,
             };
             if !valid {
-                return Err(AdapterError::InvalidTableMutationSelection);
+                let (object_name, object_type) = match catalog.try_get_entry(id) {
+                    Some(entry) => {
+                        let object_name = catalog.resolve_full_name(entry.name(), None).to_string();
+                        let object_type = match entry.item().typ() {
+                            // We only need the disallowed types here; the allowed types are handled above.
+                            Source => "source",
+                            Secret => "secret",
+                            Connection => "connection",
+                            Table => {
+                                if !id.is_user() {
+                                    "system table"
+                                } else {
+                                    "source-export table"
+                                }
+                            }
+                            View => "system view",
+                            MaterializedView => "system materialized view",
+                            ContinualTask => "system task",
+                            _ => "invalid dependency",
+                        };
+                        (object_name, object_type.to_string())
+                    }
+                    None => (id.to_string(), "unknown".to_string()),
+                };
+                return Err(AdapterError::InvalidTableMutationSelection {
+                    object_name,
+                    object_type,
+                });
             }
             for id in ids_to_check {
                 validate_read_dependencies(catalog, &id)?;
