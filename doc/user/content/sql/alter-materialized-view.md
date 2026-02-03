@@ -14,7 +14,7 @@ Use `ALTER MATERIALIZED VIEW` to:
 
 {{< if-released "v26.10" >}}
 
-- Apply a replacement materialized view. *Public preview*.
+- Replace a materialized view. (*Public preview*)
 
 {{< /if-released >}}
 
@@ -53,27 +53,88 @@ To reset the retention history to the default for a materialized view:
 
 {{< /tab >}}
 {{< if-released "v26.10" >}}
-{{< tab "Apply replacement" >}}
+{{< tab "Replace materialized view" >}}
 
-### Apply replacement
+### Replace materialized view
 
 {{< public-preview />}}
 
-To apply a replacement materialized view:
+To replace an existing materialized view in-place with a replacement
+materialized view:
 
 {{% include-syntax file="examples/alter_materialized_view" example="syntax-apply-replacement" %}}
-
-This operation replaces the definition of the target materialized view with the definition of the replacement, and drops the replacement at the same time.
 
 {{< /tab >}}
 {{< /if-released >}}
 {{< /tabs >}}
 
+{{< if-released "v26.10" >}}
+
+## Details
+
+### Replacing a materialized view
+
+{{< public-preview />}}
+
+{{% include-headless "/headless/replacement-views/associated-commands-blurb/"
+%}}
+
+{{% include-from-yaml data="examples/alter_materialized_view" name="apply-replacement-command-details" %}}
+
+See [Recommended checks before replacing a
+view](/sql/alter-materialized-view/#recommended-checks-before-replacing-a-view).
+
+#### Recommended checks before replacing a view
+
+{{% include-from-yaml data="examples/alter_materialized_view"
+name="prereq-recommendations" %}}
+
+{{< /if-released >}}
+
 ## Privileges
 
 The privileges required to execute this statement are:
 
-{{% include-headless "/headless/sql-command-privileges/alter-materialized-view" %}}
+{{% include-headless "/headless/sql-command-privileges/alter-materialized-view"
+%}}
+
+{{< if-released "v26.10" >}}
+## Examples
+
+### Replace a materialized view
+
+{{< public-preview />}}
+
+{{% include-headless
+"headless/replacement-views/replacement-view-target-restrictions" %}}
+
+#### Prerequisite
+
+{{% include-example file="examples/create_materialized_view"
+example="example-create-replacement-materialized-view" %}}
+
+The replacement view hydrates in the background.
+
+#### Apply the replacement
+
+{{< tip >}}
+
+{{% include-from-yaml data="examples/alter_materialized_view"
+name="prereq-recommendations-short" %}}
+
+See [Recommended checks for
+details](/sql/alter-materialized-view/#recommended-checks-before-replacing-a-view).
+
+{{< /tip >}}
+
+{{% include-example file="examples/alter_materialized_view"
+example="example-apply-replacement" %}}
+
+For a step-by-step tutorial on replacing a materialized view, see [Replace
+materialized views
+guide](/transform-data/updating-materialized-views/replace-materialized-view/).
+
+{{< /if-released >}}
 
 ## Related pages
 
