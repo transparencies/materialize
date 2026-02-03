@@ -344,7 +344,6 @@ class FetchAction(Action):
         result = super().errors_to_ignore(exe)
         result.extend(
             [
-                "is not of expected type",  # TODO(def-) Remove when database-issues#7857 is fixed
                 "cached plan must not change result type",  # Expected, see database-issues#9666
             ]
         )
