@@ -65,15 +65,22 @@ bin/mz-workload-capture postgres://mz_system:materialize@127.0.0.1/materialize \
 
 ### Workload Anonymization
 
-Anonymizes identifiers in workload captures for sharing without exposing sensitive information.
+Anonymizes identifiers and literals in workload captures for sharing without exposing sensitive information.
 
 **What it anonymizes:**
+
+*Identifiers (`--identifiers`, enabled by default):*
 - Database names → `db_0`, `db_1`, ...
 - Schema names → `schema_1`, `schema_2`, ...
 - Table names → `table_1`, `table_2`, ...
 - Column names → `column_1`, `column_2`, ...
 - View, materialized view, source, sink, connection names
 - All identifiers in `create_sql` definitions and queries
+
+*Literals (`--literals`, enabled by default):*
+- String literals in SQL → `'literal_1'`, `'literal_2'`, ...
+- String default values in table/source/child columns
+- String literals in queries
 
 **Usage:**
 ```bash
@@ -84,10 +91,19 @@ bin/mz-workload-anonymize <file> [OPTIONS]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-o, --output` | Path to write output | overwrites input file |
+| `--identifiers` / `--no-identifiers` | Anonymize object names | enabled |
+| `--literals` / `--no-literals` | Anonymize string literals | enabled |
 
-**Example:**
+**Examples:**
 ```bash
+# Full anonymization (default)
 bin/mz-workload-anonymize workload_prod.yml -o workload_prod_anon.yml
+
+# Only anonymize identifiers, keep original string literals
+bin/mz-workload-anonymize workload_prod.yml --no-literals -o workload_prod_anon.yml
+
+# Only anonymize literals, keep original object names
+bin/mz-workload-anonymize workload_prod.yml --no-identifiers -o workload_prod_anon.yml
 ```
 
 The anonymizer preserves SQL keywords and built-in Materialize objects while applying consistent mapping throughout the workload to maintain referential integrity.

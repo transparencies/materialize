@@ -205,6 +205,8 @@ def main() -> int:
     )
 
     parser.add_argument("mz_url", type=str)
+    # Default cluster to use
+    parser.add_argument("--cluster", type=str, default="quickstart")
     parser.add_argument(
         "-o",
         "--output",
@@ -229,6 +231,8 @@ def main() -> int:
 
     conn = psycopg.connect(args.mz_url)
     conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute(SQL("SET CLUSTER = {}").format(Identifier(args.cluster)))
 
     workload = {
         "databases": {},
