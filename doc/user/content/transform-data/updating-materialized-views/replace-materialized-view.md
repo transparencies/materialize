@@ -93,7 +93,7 @@ For this guide, we'll use the [Materialize auction load generator](/sql/create-s
    ```
 
    This creates several tables (referred to as subsources in
-   Materialize)including `auctions`, `bids`, `users`, and `organizations` that
+   Materialize) including `auctions`, `bids`, `users`, and `organizations` that
    simulate a live auction environment.
 
 ### Step 2. Create the materialized view and its dependent objects
