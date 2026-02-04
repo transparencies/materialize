@@ -442,6 +442,7 @@ def _cargo_build(
         env["RUSTFLAGS"] = (
             env.get("RUSTFLAGS", "") + " " + " ".join(rustc_flags.coverage)
         )
+        env["LLVM_PROFILE_FILE"] = "/dev/null"
     if args.sanitizer != "none":
         env["RUSTFLAGS"] = (
             env.get("RUSTFLAGS", "")

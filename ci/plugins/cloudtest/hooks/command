@@ -103,8 +103,9 @@ cleanup() {
 
       ci_unimportant_heading "cloudtest: Generate coverage information"
       if [ -n "$(find . -name '*.profraw')" ]; then
-          find . -name '*.profraw' -exec bin/ci-builder run stable rust-profdata merge -sparse -o coverage/"$BUILDKITE_JOB_ID".profdata {} +
-          find . -name '*.profraw' -delete
+          rm -f coverage/"$BUILDKITE_JOB_ID".profdata
+          rm -f coverage/"$BUILDKITE_JOB_ID"-*.lcov || true
+          bin/ci-builder run stable bin/ci-validate-profraws coverage/"$BUILDKITE_JOB_ID".profdata
 
           ARGS=()
           for program in clusterd environmentd; do
@@ -113,10 +114,8 @@ cleanup() {
                 ARGS+=("-a" coverage/"$BUILDKITE_JOB_ID"-"$program".lcov)
               fi
           done
-          rm coverage/"$BUILDKITE_JOB_ID".profdata
           if [ "${#ARGS[@]}" != 0 ]; then
             bin/ci-builder run stable lcov "${ARGS[@]}" -o coverage/"$BUILDKITE_JOB_ID".lcov
-            rm coverage/"$BUILDKITE_JOB_ID"-*.lcov
             bin/ci-builder run stable zstd coverage/"$BUILDKITE_JOB_ID".lcov
             buildkite-agent artifact upload coverage/"$BUILDKITE_JOB_ID".lcov.zst
             rm -rf coverage
