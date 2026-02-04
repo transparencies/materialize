@@ -38,7 +38,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         prog="mz-workload-anonymize",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        description="Anonymize identifiers in a workload capture file",
+        description="Anonymize identifiers and literals in a workload capture file",
     )
 
     parser.add_argument(
@@ -47,6 +47,12 @@ def main() -> int:
         type=str,
         default=None,
         help="Path to write the workload.yml, overrides the input file if not specified",
+    )
+    parser.add_argument(
+        "--identifiers", action=argparse.BooleanOptionalAction, default=True
+    )
+    parser.add_argument(
+        "--literals", action=argparse.BooleanOptionalAction, default=True
     )
 
     parser.add_argument(
@@ -60,7 +66,6 @@ def main() -> int:
     with open(args.file) as f:
         workload = yaml.load(f, Loader=yaml.CSafeLoader)
 
-    # Don't rename keywords, it makes the text-based replacements go wrong
     kws = keywords()
 
     new = {
@@ -83,13 +88,34 @@ def main() -> int:
         "sinks": 0,
         "types": 0,
         "columns": 0,
+        "literals": 0,
     }
 
     def set_name(name: str, new_name: str) -> str:
-        if name.lower() in kws:
-            new_name = name
-        mapping[name] = new_name
-        return new_name
+        if args.identifiers:
+            if name.lower() in kws:
+                new_name = name
+            mapping[name] = new_name
+            return new_name
+        else:
+            return name
+
+    string_literal_pattern = re.compile(r"'(?:[^']*(?:'')?)*'")
+
+    def anonymize_string_literal(match: re.Match[str]) -> str:
+        count["literals"] += 1
+        return f"'literal_{count['literals']}'"
+
+    def anonymize_literals_in_sql(sql: str) -> str:
+        return string_literal_pattern.sub(anonymize_string_literal, sql)
+
+    def anonymize_column_default(column: dict[str, Any]) -> None:
+        """Anonymize string default values in columns."""
+        default = column.get("default")
+        if default is not None and default != "NULL":
+            if isinstance(default, str) and default.startswith("'"):
+                count["literals"] += 1
+                column["default"] = f"'literal_{count['literals']}'"
 
     for i, (name, cluster) in enumerate(workload["clusters"].items()):
         new_name = set_name(name, f"cluster_{i}")
@@ -128,6 +154,8 @@ def main() -> int:
                         column["name"], f"column_{count['columns']}"
                     )
                     column["name"] = new_column_name
+                    if args.literals:
+                        anonymize_column_default(column)
                     table["columns"].append(column)
                 new_schema["tables"][new_table_name] = table
 
@@ -148,6 +176,8 @@ def main() -> int:
                             column["name"], f"column_{count['columns']}"
                         )
                         column["name"] = new_column_name
+                        if args.literals:
+                            anonymize_column_default(column)
                         source["columns"].append(column)
                 if "children" in source:
                     old_children = source["children"]
@@ -166,6 +196,8 @@ def main() -> int:
                                 column["name"], f"column_{count['columns']}"
                             )
                             column["name"] = new_column_name
+                            if args.literals:
+                                anonymize_column_default(column)
                             child["columns"].append(column)
                         source["children"][
                             f"{child['database']}.{child['schema']}.{child['name']}"
@@ -214,57 +246,71 @@ def main() -> int:
         new["databases"][new_db_name] = new_database
 
     # TODO: Case discrepancies are not handled. You can call a column `mintimestamp`, but then use it as `minTimestamp`
-    pattern = re.compile(
-        "|".join(map(re.escape, sorted(mapping, key=len, reverse=True)))
-    )
+    if args.identifiers:
+        pattern = re.compile(
+            "|".join(map(re.escape, sorted(mapping, key=len, reverse=True)))
+        )
 
-    def replace_substr(d: dict[str, Any], entry: str) -> None:
-        d[entry] = pattern.sub(lambda m: mapping[m.group(0)], d[entry])
+    def replace_identifiers(d: dict[str, Any], entry: str) -> None:
+        if args.identifiers:
+            d[entry] = pattern.sub(lambda m: mapping[m.group(0)], d[entry])
+
+    def replace_literals(d: dict[str, Any], entry: str) -> None:
+        if args.literals:
+            d[entry] = anonymize_literals_in_sql(d[entry])
 
     # TODO: The create_sql replacements are more of a heuristic because we might overwrite identifiers and same name existing twice. There are two alternatives:
     # 1. Wrap the Mz parser in Python, parse the SQL, resolve what they map to, rename, and reserialize.
     # 2. Spin up Materialize, RENAME everything. Doesn't work for column names? Then take a new recording
     for cluster in new["clusters"].values():
-        replace_substr(cluster, "create_sql")
+        replace_identifiers(cluster, "create_sql")
     for db in new["databases"].values():
         for schema in db.values():
             for table in schema["tables"].values():
                 for column in table["columns"]:
-                    if column["type"] in mapping:
+                    if args.identifiers and column["type"] in mapping:
                         column["type"] = mapping[column["type"]]
+                replace_literals(table, "create_sql")
             for typ in schema["types"].values():
-                replace_substr(typ, "create_sql")
+                replace_identifiers(typ, "create_sql")
             for conn in schema["connections"].values():
-                replace_substr(conn, "create_sql")
+                replace_identifiers(conn, "create_sql")
             for source in schema["sources"].values():
                 for column in source.get("columns", []):
-                    if column["type"] in mapping:
+                    if args.identifiers and column["type"] in mapping:
                         column["type"] = mapping[column["type"]]
                 for child in source.get("children", {}).values():
-                    child["schema"] = mapping[child["schema"]]
-                    child["database"] = mapping[child["database"]]
+                    if args.identifiers:
+                        child["schema"] = mapping[child["schema"]]
+                        child["database"] = mapping[child["database"]]
                     for column in child["columns"]:
-                        if column["type"] in mapping:
+                        if args.identifiers and column["type"] in mapping:
                             column["type"] = mapping[column["type"]]
-                    replace_substr(child, "create_sql")
-                replace_substr(source, "create_sql")
+                    replace_identifiers(child, "create_sql")
+                    replace_literals(child, "create_sql")
+                replace_identifiers(source, "create_sql")
+                replace_literals(source, "create_sql")
             for view in schema["views"].values():
-                replace_substr(view, "create_sql")
+                replace_identifiers(view, "create_sql")
+                replace_literals(view, "create_sql")
             for mv in schema["materialized_views"].values():
-                replace_substr(mv, "create_sql")
+                replace_identifiers(mv, "create_sql")
+                replace_literals(mv, "create_sql")
             for index in schema["indexes"].values():
-                replace_substr(index, "create_sql")
+                replace_identifiers(index, "create_sql")
             for sink in schema["sinks"].values():
-                replace_substr(sink, "create_sql")
+                replace_identifiers(sink, "create_sql")
     for query in workload["queries"]:
-        query["cluster"] = mapping.get(query["cluster"], query["cluster"])
-        query["database"] = mapping.get(query["database"], query["database"])
-        query["search_path"] = [
-            mapping.get(schema, schema) for schema in query["search_path"]
-        ]
-        replace_substr(query, "sql")
+        if args.identifiers:
+            query["cluster"] = mapping.get(query["cluster"], query["cluster"])
+            query["database"] = mapping.get(query["database"], query["database"])
+            query["search_path"] = [
+                mapping.get(schema, schema) for schema in query["search_path"]
+            ]
+            replace_identifiers(query, "sql")
+        if args.literals:
+            replace_literals(query, "sql")
         new["queries"].append(query)
-    # TODO: Anonymize literals in queries?
 
     with open(args.output or args.file, "w") as f:
         yaml.dump(new, f, Dumper=yaml.CSafeDumper)
