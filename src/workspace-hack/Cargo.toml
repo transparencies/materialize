@@ -336,7 +336,6 @@ miniz_oxide = { version = "0.8.9", default-features = false, features = ["simd",
 native-tls = { version = "0.2.14", default-features = false, features = ["vendored"] }
 openssl = { version = "0.10.75", features = ["vendored"] }
 openssl-sys = { version = "0.9.111", default-features = false, features = ["vendored"] }
-ring = { version = "0.17.14", features = ["std"] }
 rustix-d585fab2519d2d1 = { package = "rustix", version = "0.38.44", features = ["fs", "net", "process", "termios"] }
 rustix-dff4ba8e3ae991db = { package = "rustix", version = "1.0.7", features = ["event", "fs", "pipe", "process", "time"] }
 spin = { version = "0.10.0" }
@@ -353,7 +352,6 @@ miniz_oxide = { version = "0.8.9", default-features = false, features = ["simd",
 native-tls = { version = "0.2.14", default-features = false, features = ["vendored"] }
 openssl = { version = "0.10.75", features = ["vendored"] }
 openssl-sys = { version = "0.9.111", default-features = false, features = ["vendored"] }
-ring = { version = "0.17.14", features = ["std"] }
 rustix-d585fab2519d2d1 = { package = "rustix", version = "0.38.44", features = ["fs", "net", "process", "termios"] }
 rustix-dff4ba8e3ae991db = { package = "rustix", version = "1.0.7", features = ["event", "fs", "pipe", "process", "time"] }
 spin = { version = "0.10.0" }
@@ -366,7 +364,6 @@ hyper-util = { version = "0.1.19", default-features = false, features = ["client
 idna = { version = "1.1.0" }
 miniz_oxide = { version = "0.8.9", default-features = false, features = ["simd", "with-alloc"] }
 native-tls = { version = "0.2.14", default-features = false, features = ["vendored"] }
-ring = { version = "0.17.14", features = ["std"] }
 rustix-d585fab2519d2d1 = { package = "rustix", version = "0.38.44", features = ["fs", "net", "process", "termios"] }
 rustix-dff4ba8e3ae991db = { package = "rustix", version = "1.0.7", features = ["event", "fs", "pipe", "process", "time"] }
 security-framework = { version = "2.10.0", features = ["alpn"] }
@@ -380,7 +377,6 @@ hyper-util = { version = "0.1.19", default-features = false, features = ["client
 idna = { version = "1.1.0" }
 miniz_oxide = { version = "0.8.9", default-features = false, features = ["simd", "with-alloc"] }
 native-tls = { version = "0.2.14", default-features = false, features = ["vendored"] }
-ring = { version = "0.17.14", features = ["std"] }
 rustix-d585fab2519d2d1 = { package = "rustix", version = "0.38.44", features = ["fs", "net", "process", "termios"] }
 rustix-dff4ba8e3ae991db = { package = "rustix", version = "1.0.7", features = ["event", "fs", "pipe", "process", "time"] }
 security-framework = { version = "2.10.0", features = ["alpn"] }
