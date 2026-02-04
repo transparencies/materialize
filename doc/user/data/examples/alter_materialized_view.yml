@@ -88,7 +88,7 @@
 - name: "prereq-recommendations"
   content: |
 
-   Before applying, verify that the replacement materialized view is hydrated 
+   Before applying, verify that the replacement materialized view is hydrated
    to avoid downtime:
 
      ```mzsql

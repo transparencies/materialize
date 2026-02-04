@@ -194,8 +194,8 @@ flowchart LR
 ### Step 3. Create a replacement materialized view.
 
 Now, suppose you want to modify `mv_winning_bids` to only include bids above
-a certain threshold. Instead of dropping and recreating the materialized view 
-(which would require recreating all downstream objects), you can create a 
+a certain threshold. Instead of dropping and recreating the materialized view
+(which would require recreating all downstream objects), you can create a
 replacement.
 
 1. In the `compute_cluster`, use [`CREATE REPLACEMENT MATERIALIZED
