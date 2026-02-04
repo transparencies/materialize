@@ -35,15 +35,17 @@ For detailed instructions, see the [Blue/green deployment guide](/manage/dbt/blu
 
 ## Replace materialized view
 
-The `ALTER MATERIALIZED VIEW ... APPLY REPLACEMENT` command allows you to update
-a single materialized view's definition while preserving its name, downstream
-dependencies, and indexes. Materialize calculates the *diff* between the original
-and replacement views, then propagates the changes to all dependent objects.
+The [`ALTER MATERIALIZED VIEW ... APPLY
+REPLACEMENT`](/sql/alter-materialized-view/) command allows you to update a
+single materialized view's definition while preserving its name, downstream
+dependencies, and indexes. Materialize calculates the *diff* between the
+original and replacement views, then propagates the changes to all dependent
+objects.
 
 This strategy is ideal when:
 
-- You're modifying a single materialized view
-- You want a simple, SQL-native approach without additional tooling
-- You can tolerate a brief reduction in freshness on the materialized view, and all downstream objects
+- You're modifying a single materialized view.
+- You want a simple, SQL-native approach without additional tooling.
+- You can tolerate a brief reduction in freshness on the materialized view, and all downstream objects.
 
 For detailed instructions, see the [Replace materialized view guide](replace-materialized-view/).

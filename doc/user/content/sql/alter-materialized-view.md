@@ -89,6 +89,16 @@ view](/sql/alter-materialized-view/#recommended-checks-before-replacing-a-view).
 {{% include-from-yaml data="examples/alter_materialized_view"
 name="prereq-recommendations" %}}
 
+#### Considerations
+
+{{% include-from-yaml data="examples/alter_materialized_view"
+name="cpu-memory-considerations" %}}
+
+#### Troubleshooting
+
+{{% include-from-yaml data="examples/alter_materialized_view"
+name="troubleshooting-lagging-original-view" %}}
+
 {{< /if-released >}}
 
 ## Privileges
@@ -108,7 +118,7 @@ The privileges required to execute this statement are:
 {{% include-headless
 "headless/replacement-views/replacement-view-target-restrictions" %}}
 
-#### Prerequisite
+#### Example Prerequisite
 
 {{% include-example file="examples/create_materialized_view"
 example="example-create-replacement-materialized-view" %}}
@@ -116,16 +126,6 @@ example="example-create-replacement-materialized-view" %}}
 The replacement view hydrates in the background.
 
 #### Apply the replacement
-
-{{< tip >}}
-
-{{% include-from-yaml data="examples/alter_materialized_view"
-name="prereq-recommendations-short" %}}
-
-See [Recommended checks for
-details](/sql/alter-materialized-view/#recommended-checks-before-replacing-a-view).
-
-{{< /tip >}}
 
 {{% include-example file="examples/alter_materialized_view"
 example="example-apply-replacement" %}}

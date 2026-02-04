@@ -321,12 +321,7 @@ guide for a step-by-step tutorial.
 
 #### Query performance of replacement views
 
-You can query a replacement materialized view to validate its results before
-replacing. However, queries against replacement materialized views are slower
-and more computationally expensive than queries against regular materialized
-views. This is because the replacement is treated like a
-[view](/sql/create-view), and its results are re-computed as part of the query
-execution.
+{{% include-headless "/headless/replacement-views/querying-replacement-view" %}}
 
 #### Restrictions and limitations
 
