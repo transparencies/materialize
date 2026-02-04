@@ -1451,7 +1451,7 @@ class IcebergSink(Sink):
 
     @classmethod
     def can_run(cls, version: MzVersion) -> bool:
-        return version > MzVersion.create(26, 7, 0)
+        return version > MzVersion.create(26, 9, 0)
 
     def version(self) -> ScenarioVersion:
         return ScenarioVersion.create(1, 1, 0)
@@ -1504,7 +1504,7 @@ class IcebergSink(Sink):
 
 > INSERT INTO {source_name} VALUES (0, 0);
 
->[version>=2600900] CREATE SINK iceberg_sink
+> CREATE SINK iceberg_sink
   IN CLUSTER sink_cluster
   FROM {source_name}
   INTO ICEBERG CATALOG CONNECTION polaris_conn (
@@ -1514,18 +1514,6 @@ class IcebergSink(Sink):
   USING AWS CONNECTION aws_conn
   KEY (pk) NOT ENFORCED
   MODE UPSERT
-  WITH (COMMIT INTERVAL '1s');
-
->[version<2600900] CREATE SINK iceberg_sink
-  IN CLUSTER sink_cluster
-  FROM {source_name}
-  INTO ICEBERG CATALOG CONNECTION polaris_conn (
-    NAMESPACE 'default_namespace',
-    TABLE '{table_name}'
-  )
-  USING AWS CONNECTION aws_conn
-  KEY (pk) NOT ENFORCED
-  ENVELOPE UPSERT
   WITH (COMMIT INTERVAL '1s');
 
 > SELECT status
