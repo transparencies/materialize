@@ -117,6 +117,7 @@ class Composition:
         munge_services: bool = True,
         project_name: str | None = None,
         sanity_restart_mz: bool = False,
+        host_network: bool = False,
     ):
         self.conns = {}
         self.name = name
@@ -131,6 +132,7 @@ class Composition:
         self.sources_and_sinks_ignored_from_validation = set()
         self.is_sanity_restart_mz = sanity_restart_mz
         self.current_test_case_name_override: str | None = None
+        self.host_network = host_network
 
         if name in self.repo.compositions:
             self.path = self.repo.compositions[name]
@@ -265,6 +267,11 @@ class Composition:
 
             if "allow_host_ports" in config:
                 config.pop("allow_host_ports")
+
+            if self.host_network:
+                config["network_mode"] = "host"
+                if "networks" in config:
+                    del config["networks"]
 
             if self.repo.rd.coverage:
                 coverage_volume = "./coverage:/coverage"
