@@ -10,6 +10,7 @@
 $ postgres-execute connection=postgres://mz_system:materialize@${testdrive.materialize-internal-sql-addr}
 ALTER SYSTEM SET enable_within_timestamp_order_by_in_subscribe = true;
 ALTER SYSTEM SET enable_envelope_debezium_in_subscribe = true;
+ALTER SYSTEM SET compute_subscribe_snapshot_optimization = true;
 
 $ set-regex match=\d{13,20} replacement=<TIMESTAMP>
 
@@ -476,3 +477,21 @@ INSERT INTO t5 VALUES ('wow!');
 
 > FETCH 1 c5;
 <TIMESTAMP> 1 wow!
+
+> COMMIT;
+
+> CREATE VIEW v5 AS SELECT max(f1) as max, length(f1) as len from t5 group by len;
+> CREATE DEFAULT INDEX ON v5;
+
+> BEGIN;
+> DECLARE c5a CURSOR FOR SUBSCRIBE v5 WITH (SNAPSHOT = false);
+
+> FETCH ALL c5a WITH (TIMEOUT = '0s');
+
+$ postgres-execute connection=mz_system
+INSERT INTO t5 VALUES ('amazing!');
+
+> FETCH 1 c5a;
+<TIMESTAMP> 1 amazing! 8
+
+> COMMIT;

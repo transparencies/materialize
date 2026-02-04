@@ -376,6 +376,9 @@ class FetchAction(Action):
                 columns = self.rng.sample(obj.columns, len(obj.columns))
                 key = ", ".join(column.name(True) for column in columns)
                 query += f" ENVELOPE {envelope} (KEY ({key}))"
+
+            if self.rng.choice([True, False]):
+                query += " WITH (SNAPSHOT = false)"
         else:
             query += f"({self.generate_select_query(exe, ExprKind.MATERIALIZABLE)})"
 
