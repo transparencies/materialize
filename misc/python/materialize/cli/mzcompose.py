@@ -93,6 +93,11 @@ For additional details on mzcompose, consult doc/developer/mzbuild.md.""",
         help="Use a different project name than the directory name",
     )
     parser.add_argument(
+        "--host-network",
+        action="store_true",
+        help="Override networking to use host networking",
+    )
+    parser.add_argument(
         "--sanity-restart-mz",
         action="store_true",
         # Sanity restarts are rather slow and rarely find a bug, don't run on test pipeline in PRs
@@ -199,6 +204,7 @@ def load_composition(args: argparse.Namespace) -> Composition:
             preserve_ports=args.preserve_ports,
             project_name=args.project_name,
             sanity_restart_mz=args.sanity_restart_mz,
+            host_network=args.host_network,
         )
     except UnknownCompositionError as e:
         if args.find:
