@@ -194,8 +194,9 @@ flowchart LR
 ### Step 3. Create a replacement materialized view.
 
 Now, suppose you want to modify `mv_winning_bids` to only include bids above
-a certain threshold. Instead of dropping and recreating the view (which would
-require recreating all downstream objects), you can create a replacement.
+a certain threshold. Instead of dropping and recreating the materialized view 
+(which would require recreating all downstream objects), you can create a 
+replacement.
 
 1. In the `compute_cluster`, use [`CREATE REPLACEMENT MATERIALIZED
 VIEW`](/sql/create-materialized-view/) to create `mv_winning_bids_v2` with the
@@ -231,7 +232,7 @@ updated materialized view defintion:
    AND b.amount > 50;  -- New filter: only include winning bids above 50
    ```
 
-   The replacement view:
+   The replacement materialized view:
    - References the original view using `FOR auction_house.mv_winning_bids`.
    - Specifies the same output schema as the original view (i.e., same column
      names, column types, column order, nullability, and keys) in its `SELECT`
@@ -243,11 +244,11 @@ updated materialized view defintion:
 
    {{% include-headless "/headless/replacement-views/querying-replacement-view" %}}
    {{< /note >}}
-1. Before applying the replacement view, wait for it to fully hydrate. To query
-   the replacement view's hydration status:
+1. Before applying the replacement materialized view, wait for it to fully hydrate. To query
+   the replacement materialized view's hydration status:
 
    ```mzsql
-   -- Check hydration status of the replacement view
+   -- Check hydration status of the replacement materialized view
    SELECT
         mv.name,
         h.hydrated
@@ -347,9 +348,9 @@ which will auto-scale cluster sizes based on cluster activity.
 ### Drop unused replacement
 
 The [`ALTER MATERIALIZED VIEW ... APPLY
-REPLACEMENT`](/sql/alter-materialized-view/) command drops the replacement view
+REPLACEMENT`](/sql/alter-materialized-view/) command drops the replacement materialized view
 as part of its operation. However, if you decide not to apply a replacement,
-instead of keeping unused replacement views around, you can manually drop it:
+instead of keeping unused replacement materialized views around, you can manually drop it:
 
 ```mzsql
 -- Drop the replacement without applying
