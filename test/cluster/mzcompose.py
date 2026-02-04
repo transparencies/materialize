@@ -4954,7 +4954,7 @@ def workflow_test_adhoc_system_indexes(
         """
         ALTER SYSTEM SET unsafe_enable_unstable_dependencies = on;
         SET cluster = mz_catalog_server;
-        CREATE INDEX mz_test_idx2 ON mz_internal.mz_hydration_statuses (hydrated);
+        CREATE INDEX mz_test_idx2 ON mz_internal.mz_compute_hydration_statuses (hydrated);
         ALTER SYSTEM SET unsafe_enable_unstable_dependencies = off;
         """,
         port=6877,
@@ -4970,13 +4970,17 @@ def workflow_test_adhoc_system_indexes(
         WHERE i.name = 'mz_test_idx2'
         """
     )
-    assert output[0] == ("u2", "mz_hydration_statuses", "mz_catalog_server"), output
+    assert output[0] == (
+        "u2",
+        "mz_compute_hydration_statuses",
+        "mz_catalog_server",
+    ), output
     output = c.sql_query(
-        "EXPLAIN SELECT * FROM mz_internal.mz_hydration_statuses WHERE hydrated"
+        "EXPLAIN SELECT * FROM mz_internal.mz_compute_hydration_statuses WHERE hydrated"
     )
     assert "mz_test_idx2" in output[0][0]
     output = c.sql_query(
-        "SELECT * FROM mz_internal.mz_hydration_statuses WHERE hydrated"
+        "SELECT * FROM mz_internal.mz_compute_hydration_statuses WHERE hydrated"
     )
     assert len(output) > 0
 
@@ -4996,7 +5000,11 @@ def workflow_test_adhoc_system_indexes(
         """
     )
     assert output[0] == ("u1", "mz_tables", "mz_catalog_server"), output
-    assert output[1] == ("u2", "mz_hydration_statuses", "mz_catalog_server"), output
+    assert output[1] == (
+        "u2",
+        "mz_compute_hydration_statuses",
+        "mz_catalog_server",
+    ), output
 
     # Make sure the new indexes can be dropped again.
     c.sql(
