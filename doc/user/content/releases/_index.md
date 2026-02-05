@@ -15,6 +15,67 @@ Starting with the v26.1.0 release, Materialize releases on a weekly schedule for
 both Cloud and Self-Managed. See [Release schedule](/releases/schedule) for details.
 {{</ note >}}
 
+## v26.10.0
+*Released to Materialize Cloud: 2026-02-05* <br>
+*Released to Materialize Self-Managed: 2026-02-06* <br>
+
+This release includes performance improvements for PostgreSQL source snapshots,
+adds support for record data types in Iceberg sinks, introduces a new RBAC admin
+panel in the console, and fixes several bugs including issues with floating-point
+equality comparisons and SQL injection vulnerabilities in the console.
+
+### Features
+
+- **RBAC Admin Panel in Console**: A new admin panel for managing roles and
+  access controls is now available in the Materialize console. The panel
+  includes a roles list view, a visual graph view showing role relationships,
+  and detailed role information including privileges and assigned users.
+
+### Improvements
+
+- PostgreSQL sources now perform parallel snapshots by splitting TID ranges
+  among workers, improving snapshot performance for large tables.
+- SQL Server sources now allow dropping and altering columns that are excluded
+  from replication, unblocking source versioning for SQL Server.
+- Iceberg sinks now support record data types, which are written as Iceberg
+  struct types.
+- Iceberg sinks now use `MODE` instead of `ENVELOPE` for specifying the sink
+  mode, providing clearer syntax.
+- The wording of the `= NULL` notice has been improved to better explain why
+  comparisons with NULL using `=` always return NULL.
+- Statement timeouts are now applied to the optimization phase of query
+  processing, preventing long-running optimizations from exceeding configured
+  limits.
+- Added reference documentation for replacement materialized views.
+- Added documentation for EXPLAIN plan operators.
+- Added M.1 to compute credit mapping documentation and clarifications for NULL
+  comparison behavior.
+- Added documentation for cancelling an in-progress rollout in Self-Managed
+  deployments.
+- Added documentation for system parameter ConfigMap in Self-Managed
+  deployments.
+
+### Bug Fixes
+
+- Fixed an issue where floating-point values like `-0.0` and `+0.0` could be
+  treated as different values in equality comparisons but the same in ordering,
+  causing incorrect results in operations like `DISTINCT`.
+- Fixed incorrect documentation for durable subscribes that could cause users to
+  miss events occurring exactly at the progress timestamp when resuming.
+- Fixed AWS role assumption for Iceberg sinks when using S3 FileIO.
+- Fixed an issue where certain SQL keywords required incorrect quoting in
+  expressions.
+- Fixed the `ORDER BY` clause in `EXPLAIN ANALYZE MEMORY` to correctly sort by
+  memory usage instead of by the text representation.
+- Fixed a bug where the optimizer could mishandle nullability inside record
+  types.
+- Fixed an issue where the `mz_roles` system table could produce invalid
+  retractions when certain system variables were changed.
+- Fixed a catalog migration issue that could cause upgrade failures when indexes
+  had missing IDs in their stored SQL.
+- *Console*: Fixed SQL injection vulnerability in identifier quoting where only
+  the first quote character was being escaped.
+
 ## v26.9.0
 *Released to Materialize Cloud: 2026-01-29* <br>
 *Released to Materialize Self-Managed: 2026-01-30* <br>
