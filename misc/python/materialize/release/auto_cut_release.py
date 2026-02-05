@@ -72,7 +72,7 @@ released: false
 patch: 0
 rc: 1
 publish_helm_chart: true
-_build:
+build:
   render: never
 ---
 """
