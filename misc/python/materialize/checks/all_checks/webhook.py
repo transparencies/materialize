@@ -9,7 +9,7 @@
 from textwrap import dedent
 
 from materialize.checks.actions import Testdrive
-from materialize.checks.checks import Check, disabled
+from materialize.checks.checks import Check
 from materialize.checks.common import KAFKA_SCHEMA_WITH_SINGLE_STRING_FIELD
 from materialize.checks.executors import Executor
 from materialize.mz_version import MzVersion
@@ -142,9 +142,6 @@ class Webhook(Check):
         )
 
 
-@disabled(
-    "Reenable when database-issues#9184 is fixed and there is a way to set the cluster"
-)
 class WebhookTable(Check):
     def _can_run(self, e: Executor) -> bool:
         return self.base_version >= MzVersion.parse_mz("v0.130.0-dev")
