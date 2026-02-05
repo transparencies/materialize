@@ -28,12 +28,12 @@ Replacement materialized views allow you to modify the definition of an existing
 
 For more information, refer to:
 - [Guide: Replace Materialized Views](/transform-data/updating-materialized-views/replace-materialized-view)
-- [Syntax: CREATE REPLACEMENT MATERIALIZED VIEW](/sql/create-materialized-view#create-replacement-materialized-view)
+- [Syntax: CREATE REPLACEMENT MATERIALIZED VIEW](/sql/create-materialized-view)
 - [Syntax: ALTER MATERIALIZED VIEW](/sql/alter-materialized-view)
 
 ### Improvements
 - **Improved hydration times for PostgreSQL sources**: PostgreSQL sources now perform parallel snapshots. This should improve initial hydration times, especially for large tables.
-- **Improved startup times for SUBSCRIBEs**: `SUBSCRIBE` now skips the initial snapshots when possible, resulting in faster startups.
+- **Improved startup times when using `SUBSCRIBE`**: `SUBSCRIBE` now skips the initial snapshots when possible, resulting in faster startups.
 
 ### Bug Fixes
 - Fixed an issue where floating-point values like `-0.0` and `+0.0` could be
