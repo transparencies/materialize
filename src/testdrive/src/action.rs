@@ -26,6 +26,7 @@ use mz_adapter::session::Session;
 use mz_build_info::BuildInfo;
 use mz_catalog::config::ClusterReplicaSizeMap;
 use mz_catalog::durable::BootstrapArgs;
+use mz_ccsr::SubjectVersion;
 use mz_kafka_util::client::{MzClientContext, create_new_client_config_simple};
 use mz_ore::error::ErrorExt;
 use mz_ore::metrics::MetricsRegistry;
@@ -696,30 +697,9 @@ impl State {
             };
         }
 
-        match self
-            .ccsr_client
-            .list_subjects()
-            .await
-            .context("listing schema registry subjects")
-        {
-            Ok(subjects) => {
-                let testdrive_subjects: Vec<_> = subjects
-                    .iter()
-                    .filter(|s| s.starts_with("testdrive-"))
-                    .collect();
+        let schema_registry_errors = self.reset_schema_registry().await;
 
-                for subject in testdrive_subjects {
-                    match self.ccsr_client.delete_subject(subject).await {
-                        Ok(()) | Err(mz_ccsr::DeleteError::SubjectNotFound) => (),
-                        Err(e) => errors.push(e.into()),
-                    }
-                }
-            }
-            Err(e) => {
-                errors.push(e);
-            }
-        }
-
+        errors.extend(schema_registry_errors);
         if errors.is_empty() {
             Ok(())
         } else {
@@ -732,6 +712,84 @@ impl State {
                     .join("\n")
             );
         }
+    }
+
+    #[allow(clippy::disallowed_types)]
+    async fn reset_schema_registry(&self) -> Vec<anyhow::Error> {
+        use std::collections::HashMap;
+
+        let mut errors = Vec::new();
+        match self
+            .ccsr_client
+            .list_subjects()
+            .await
+            .context("listing schema registry subjects")
+        {
+            Ok(subjects) => {
+                let testdrive_subjects: Vec<_> = subjects
+                    .into_iter()
+                    .filter(|s| s.starts_with("testdrive-"))
+                    .collect();
+
+                // Build the dependency graphs: subject -> list of subjects it references
+                let mut graphs: HashMap<SubjectVersion, Vec<SubjectVersion>> = HashMap::new();
+
+                for subject in &testdrive_subjects {
+                    match self.ccsr_client.get_subject_with_references(subject).await {
+                        Ok((subj, refs)) => {
+                            // Filter to only testdrive subjects
+                            let refs: Vec<_> = refs
+                                .into_iter()
+                                .filter(|r| r.subject.starts_with("testdrive-"))
+                                .collect();
+                            graphs.insert(
+                                SubjectVersion {
+                                    subject: subj.name,
+                                    version: subj.version,
+                                },
+                                refs,
+                            );
+                        }
+                        Err(mz_ccsr::GetBySubjectError::SubjectNotFound) => {
+                            // Subject was already deleted, skip it
+                        }
+                        Err(e) => {
+                            errors.push(anyhow::anyhow!(
+                                "failed to get references for subject {}: {}",
+                                subject,
+                                e
+                            ));
+                        }
+                    }
+                }
+
+                // Get topological ordering (0 = root/no dependencies, higher = more dependents)
+                // We need to delete in reverse order (highest first = subjects that depend on others)
+                let subjects_to_delete: Vec<_> = match mz_ccsr::topological_sort(&graphs) {
+                    Ok(ordered) => {
+                        let mut subjects: Vec<_> = ordered.into_iter().collect();
+                        subjects.sort_by(|a, b| a.1.cmp(&b.1));
+                        subjects.into_iter().map(|(s, _)| s.clone()).collect()
+                    }
+                    Err(_) => {
+                        tracing::info!("Cycle detected, attempting to delete anyway");
+                        // Cycle detected or other error - fall back to deleting in any order
+                        graphs.into_keys().collect()
+                    }
+                };
+
+                for subject in subjects_to_delete {
+                    match self.ccsr_client.delete_subject(&subject.subject).await {
+                        Ok(()) | Err(mz_ccsr::DeleteError::SubjectNotFound) => (),
+                        Err(e) => errors.push(e.into()),
+                    }
+                }
+            }
+            Err(e) => {
+                errors.push(e);
+            }
+        }
+        errors
     }
 }
 
