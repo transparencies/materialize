@@ -143,6 +143,21 @@ See also:
 - [Optimization](/transform-data/optimization)
 - [`CREATE INDEX`](/sql/create-index/)  for complete syntax information
 
+### Updating the materialized view definition
+
+{{< public-preview />}}
+
+{{% include-headless "/headless/replacement-views/associated-commands-blurb/"
+%}}
+
+For a step-by-step tutorial, see [Replace Materialized
+Views](/transform-data/updating-materialized-views/replace-materialized-view/).
+
+See also:
+
+- [Choosing an update
+  strategy](/transform-data/updating-materialized-views/#choosing-an-update-strategy)
+
 ## Indexed views vs. materialized views
 
 {{% include-from-yaml data="index_view_details" name="table-usage-pattern-intro" %}}
