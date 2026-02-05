@@ -12163,6 +12163,15 @@ SELECT * FROM sinks"#,
     access: vec![PUBLIC_SELECT],
 });
 
+pub const MZ_HYDRATION_STATUSES_IND: BuiltinIndex = BuiltinIndex {
+    name: "mz_hydration_statuses_ind",
+    schema: MZ_INTERNAL_SCHEMA,
+    oid: oid::INDEX_MZ_HYDRATION_STATUSES_IND_OID,
+    sql: "IN CLUSTER mz_catalog_server
+ON mz_internal.mz_hydration_statuses (object_id, replica_id)",
+    is_retained_metrics_object: false,
+};
+
 pub static MZ_MATERIALIZATION_DEPENDENCIES: LazyLock<BuiltinView> = LazyLock::new(|| BuiltinView {
     name: "mz_materialization_dependencies",
     schema: MZ_INTERNAL_SCHEMA,
@@ -12316,6 +12325,15 @@ JOIN input_times i USING (id)
 JOIN root_times r USING (id)",
     access: vec![PUBLIC_SELECT],
 });
+
+pub const MZ_MATERIALIZATION_LAG_IND: BuiltinIndex = BuiltinIndex {
+    name: "mz_materialization_lag_ind",
+    schema: MZ_INTERNAL_SCHEMA,
+    oid: oid::INDEX_MZ_MATERIALIZATION_LAG_IND_OID,
+    sql: "IN CLUSTER mz_catalog_server
+ON mz_internal.mz_materialization_lag (object_id)",
+    is_retained_metrics_object: false,
+};
 
 /**
  * This view is used to display the cluster utilization over 14 days bucketed by 8 hours.
@@ -14075,6 +14093,7 @@ pub static BUILTINS_STATIC: LazyLock<Vec<Builtin<NameReference>>> = LazyLock::ne
         Builtin::Source(&MZ_COMPUTE_DEPENDENCIES),
         Builtin::View(&MZ_MATERIALIZATION_DEPENDENCIES),
         Builtin::View(&MZ_MATERIALIZATION_LAG),
+        Builtin::Index(&MZ_MATERIALIZATION_LAG_IND),
         Builtin::View(&MZ_CONSOLE_CLUSTER_UTILIZATION_OVERVIEW),
         Builtin::View(&MZ_COMPUTE_ERROR_COUNTS_PER_WORKER),
         Builtin::View(&MZ_COMPUTE_ERROR_COUNTS),
@@ -14086,6 +14105,7 @@ pub static BUILTINS_STATIC: LazyLock<Vec<Builtin<NameReference>>> = LazyLock::ne
         Builtin::Source(&MZ_CLUSTER_REPLICA_FRONTIERS),
         Builtin::View(&MZ_COMPUTE_HYDRATION_STATUSES),
         Builtin::View(&MZ_HYDRATION_STATUSES),
+        Builtin::Index(&MZ_HYDRATION_STATUSES_IND),
         Builtin::View(&MZ_SHOW_CLUSTER_REPLICAS),
         Builtin::View(&MZ_SHOW_NETWORK_POLICIES),
         Builtin::View(&MZ_CLUSTER_DEPLOYMENT_LINEAGE),
