@@ -57,7 +57,7 @@ To reset the retention history to the default for a materialized view:
 
 ### Replace materialized view
 
-{{< public-preview />}}
+{{% include-headless "/headless/replacement-views/public-preview-annotation" %}}
 
 To replace an existing materialized view in-place with a replacement
 materialized view:
@@ -74,7 +74,7 @@ materialized view:
 
 ### Replacing a materialized view
 
-{{< public-preview />}}
+{{% include-headless "/headless/replacement-views/public-preview-annotation" %}}
 
 {{% include-headless "/headless/replacement-views/associated-commands-blurb/"
 %}}
@@ -113,7 +113,7 @@ The privileges required to execute this statement are:
 
 ### Replace a materialized view
 
-{{< public-preview />}}
+{{% include-headless "/headless/replacement-views/public-preview-annotation" %}}
 
 {{% include-headless
 "headless/replacement-views/replacement-view-target-restrictions" %}}

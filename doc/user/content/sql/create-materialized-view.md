@@ -53,7 +53,7 @@ offers lower latency for direct querying within that cluster.
 
 ### Create replacement materialized view
 
-{{< public-preview />}}
+{{% include-headless "/headless/replacement-views/public-preview-annotation" %}}
 
 Create a replacement materialized view for an existing materialized view.
 
@@ -297,7 +297,7 @@ JOIN mz_materialized_views mv ON rs.materialized_view_id = mv.id;
 {{< if-released "v26.10" >}}
 ### Creating replacement materialized views
 
-{{< public-preview />}}
+{{% include-headless "/headless/replacement-views/public-preview-annotation" %}}
 
 {{% include-headless "/headless/replacement-views/associated-commands-blurb/"
 %}}
@@ -378,7 +378,7 @@ non-indexed, and so on."
 {{< if-released "v26.10" >}}
 ### Creating a replacement materialized view
 
-{{< public-preview />}}
+{{% include-headless "/headless/replacement-views/public-preview-annotation" %}}
 
 {{% include-from-yaml file="examples/create_materialized_view"
 name="replacement-view-syntax-details" %}}

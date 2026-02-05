@@ -12,9 +12,8 @@ aliases:
   - /transform-data/guide-alter-mv/
 ---
 
-{{< public-preview >}}
-This feature is only recommended for use in development environments. It
-{{< /public-preview >}}
+
+{{% include-headless "/headless/replacement-views/public-preview-annotation" %}}
 
 This guide walks you through the steps required to modify the definition of an existing materialized view, while preserving all downstream dependencies.
 
@@ -366,6 +365,7 @@ name="troubleshooting-lagging-original-view" %}}
 
 - [Updating materialized views](/transform-data/updating-materialized-views/)
 - [`CREATE MATERIALIZED VIEW`](/sql/create-materialized-view)
+- [`ALTER MATERIALIZED VIEW`](/sql/alter-materialized-view)
 - [Views](/concepts/views/)
 - [Indexes](/concepts/indexes/)
 - [Clusters](/concepts/clusters/)
