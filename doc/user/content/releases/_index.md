@@ -19,17 +19,18 @@ both Cloud and Self-Managed. See [Release schedule](/releases/schedule) for deta
 *Released to Materialize Cloud: 2026-02-05* <br>
 *Released to Materialize Self-Managed: 2026-02-06* <br>
 
-This release includes performance improvements for PostgreSQL source snapshots,
-adds support for record data types in Iceberg sinks, introduces a new RBAC admin
-panel in the console, and fixes several bugs including issues with floating-point
-equality comparisons and SQL injection vulnerabilities in the console.
+This release introduces Replacement Materialized Views, performance improvements,
+and bugfixes.
+
+### Replacement Materialized Views
+{{< public-preview />}}
+Replacement materialized views allow you to modify the definition of an existing materialized view, while preserving all downstream dependencies. Materialize is able to replace a materialized view in place, by calculating the *diff* between the original and the replacement. Once applied, the *diff* flows downstream to all dependent objects. 
+
+For more information, refer to:
+- 
 
 ### Features
 
-- **RBAC Admin Panel in Console**: A new admin panel for managing roles and
-  access controls is now available in the Materialize console. The panel
-  includes a roles list view, a visual graph view showing role relationships,
-  and detailed role information including privileges and assigned users.
 
 ### Improvements
 
