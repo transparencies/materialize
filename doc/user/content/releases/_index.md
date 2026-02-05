@@ -15,7 +15,7 @@ Starting with the v26.1.0 release, Materialize releases on a weekly schedule for
 both Cloud and Self-Managed. See [Release schedule](/releases/schedule) for details.
 {{</ note >}}
 
-## v26.10.0
+## v26.10.1
 *Released to Materialize Cloud: 2026-02-05* <br>
 *Released to Materialize Self-Managed: 2026-02-06* <br>
 
@@ -27,43 +27,18 @@ and bugfixes.
 Replacement materialized views allow you to modify the definition of an existing materialized view, while preserving all downstream dependencies. Materialize is able to replace a materialized view in place, by calculating the *diff* between the original and the replacement. Once applied, the *diff* flows downstream to all dependent objects. 
 
 For more information, refer to:
-- 
-
-### Features
-
+- [Guide: Replace Materialized Views](/transform-data/updating-materialized-views/replace-materialized-view)
+- [Syntax: CREATE REPLACEMENT MATERIALIZED VIEW](/sql/create-materialized-view#create-replacement-materialized-view)
+- [Syntax: ALTER MATERIALIZED VIEW](/sql/alter-materialized-view)
 
 ### Improvements
-
-- PostgreSQL sources now perform parallel snapshots by splitting TID ranges
-  among workers, improving snapshot performance for large tables.
-- SQL Server sources now allow dropping and altering columns that are excluded
-  from replication, unblocking source versioning for SQL Server.
-- Iceberg sinks now support record data types, which are written as Iceberg
-  struct types.
-- Iceberg sinks now use `MODE` instead of `ENVELOPE` for specifying the sink
-  mode, providing clearer syntax.
-- The wording of the `= NULL` notice has been improved to better explain why
-  comparisons with NULL using `=` always return NULL.
-- Statement timeouts are now applied to the optimization phase of query
-  processing, preventing long-running optimizations from exceeding configured
-  limits.
-- Added reference documentation for replacement materialized views.
-- Added documentation for EXPLAIN plan operators.
-- Added M.1 to compute credit mapping documentation and clarifications for NULL
-  comparison behavior.
-- Added documentation for cancelling an in-progress rollout in Self-Managed
-  deployments.
-- Added documentation for system parameter ConfigMap in Self-Managed
-  deployments.
+- **Improved hydration times for PostgreSQL sources**: PostgreSQL sources now perform parallel snapshots. This should improve initial hydration times, especially for large tables.
+- **Improved startup times for SUBSCRIBEs**: `SUBSCRIBE` now skips the initial snapshots when possible, resulting in faster startups.
 
 ### Bug Fixes
-
 - Fixed an issue where floating-point values like `-0.0` and `+0.0` could be
   treated as different values in equality comparisons but the same in ordering,
   causing incorrect results in operations like `DISTINCT`.
-- Fixed incorrect documentation for durable subscribes that could cause users to
-  miss events occurring exactly at the progress timestamp when resuming.
-- Fixed AWS role assumption for Iceberg sinks when using S3 FileIO.
 - Fixed an issue where certain SQL keywords required incorrect quoting in
   expressions.
 - Fixed the `ORDER BY` clause in `EXPLAIN ANALYZE MEMORY` to correctly sort by
@@ -72,8 +47,6 @@ For more information, refer to:
   types.
 - Fixed an issue where the `mz_roles` system table could produce invalid
   retractions when certain system variables were changed.
-- Fixed a catalog migration issue that could cause upgrade failures when indexes
-  had missing IDs in their stored SQL.
 - *Console*: Fixed SQL injection vulnerability in identifier quoting where only
   the first quote character was being escaped.
 
