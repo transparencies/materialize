@@ -1030,14 +1030,14 @@ impl<T: AstInfo> AstDisplay for CreateSourceStatement<T> {
         if !self.col_names.is_empty() {
             f.write_str(" (");
             f.write_node(&display::comma_separated(&self.col_names));
-            if self.key_constraint.is_some() {
+            if let Some(key_constraint) = &self.key_constraint {
                 f.write_str(", ");
-                f.write_node(self.key_constraint.as_ref().unwrap());
+                f.write_node(key_constraint);
             }
             f.write_str(")");
-        } else if self.key_constraint.is_some() {
+        } else if let Some(key_constraint) = &self.key_constraint {
             f.write_str(" (");
-            f.write_node(self.key_constraint.as_ref().unwrap());
+            f.write_node(key_constraint);
             f.write_str(")")
         }
         if let Some(cluster) = &self.in_cluster {
@@ -4802,6 +4802,7 @@ pub enum Explainee<T: AstInfo> {
     CreateView(Box<CreateViewStatement<T>>, bool),
     CreateMaterializedView(Box<CreateMaterializedViewStatement<T>>, bool),
     CreateIndex(Box<CreateIndexStatement<T>>, bool),
+    Subscribe(Box<SubscribeStatement<T>>, bool),
 }
 
 impl<T: AstInfo> Explainee<T> {
@@ -4816,7 +4817,8 @@ impl<T: AstInfo> Explainee<T> {
             Self::Select(..)
             | Self::CreateView(..)
             | Self::CreateMaterializedView(..)
-            | Self::CreateIndex(..) => None,
+            | Self::CreateIndex(..)
+            | Self::Subscribe(..) => None,
         }
     }
 
@@ -4872,6 +4874,12 @@ impl<T: AstInfo> AstDisplay for Explainee<T> {
                 f.write_node(statement);
             }
             Self::CreateIndex(statement, broken) => {
+                if *broken {
+                    f.write_str("BROKEN ");
+                }
+                f.write_node(statement);
+            }
+            Self::Subscribe(statement, broken) => {
                 if *broken {
                     f.write_str("BROKEN ");
                 }

@@ -381,7 +381,6 @@ Explained Query:
     cte l0 =
       Reduce::Hierarchical
         aggr_funcs=[min, max]
-        skips=[0, 0]
         monotonic
         must_consolidate
         key_plan
@@ -1312,6 +1311,18 @@ Explained Query:
           Project: ()
         →Stream materialize.public.t1
 
+Source materialize.public.t1
+
+Target cluster: quickstart
+
+EOF
+
+## Test default EXPLAIN for SUBSCRIBE
+
+query T multiline
+EXPLAIN WITH(humanized expressions)
+SUBSCRIBE t1
+----
 Source materialize.public.t1
 
 Target cluster: quickstart

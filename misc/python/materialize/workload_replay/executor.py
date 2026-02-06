@@ -108,9 +108,9 @@ def test(
     }
     if create_objects:
         start_time = time.time()
-        run_create_objects_part_1(c, services, workload)
+        run_create_objects_part_1(c, services, workload, verbose)
         if not early_initial_data:
-            run_create_objects_part_2(c, services, workload)
+            run_create_objects_part_2(c, services, workload, verbose)
         stats["object_creation"] = time.time() - start_time
     created_data = False
     try:
@@ -132,15 +132,16 @@ def test(
             )
         if early_initial_data:
             start_time = time.time()
-            run_create_objects_part_2(c, services, workload)
+            run_create_objects_part_2(c, services, workload, verbose)
             stats["object_creation"] += time.time() - start_time
         if initial_data:
-            created_data = created_data or create_initial_data_requiring_mz(
+            created_data_requiring_mz = create_initial_data_requiring_mz(
                 c,
                 workload,
                 factor_initial_data,
                 random.Random(random.randrange(SEED_RANGE)),
             )
+            created_data = created_data or created_data_requiring_mz
             stats["initial_data"]["time"] = time.time() - start_time
             if not created_data:
                 del stats["initial_data"]

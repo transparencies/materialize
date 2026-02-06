@@ -270,6 +270,7 @@ def main() -> int:
                 for column in table["columns"]:
                     if args.identifiers and column["type"] in mapping:
                         column["type"] = mapping[column["type"]]
+                replace_identifiers(table, "create_sql")
                 replace_literals(table, "create_sql")
             for typ in schema["types"].values():
                 replace_identifiers(typ, "create_sql")
@@ -312,8 +313,12 @@ def main() -> int:
             replace_literals(query, "sql")
         new["queries"].append(query)
 
-    with open(args.output or args.file, "w") as f:
-        yaml.dump(new, f, Dumper=yaml.CSafeDumper)
+    output = args.output or args.file
+    if output == "-":
+        yaml.dump(new, sys.stdout, Dumper=yaml.CSafeDumper)
+    else:
+        with open(output, "w") as f:
+            yaml.dump(new, f, Dumper=yaml.CSafeDumper)
 
     return 0
 
