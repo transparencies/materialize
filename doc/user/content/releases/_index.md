@@ -24,7 +24,7 @@ and bugfixes.
 
 ### Replacement Materialized Views
 {{< public-preview />}}
-Replacement materialized views allow you to modify the definition of an existing materialized view, while preserving all downstream dependencies. Materialize is able to replace a materialized view in place, by calculating the *diff* between the original and the replacement. Once applied, the *diff* flows downstream to all dependent objects. 
+Replacement materialized views allow you to modify the definition of an existing materialized view, while preserving all downstream dependencies. Materialize is able to replace a materialized view in place, by calculating the *diff* between the original and the replacement. Once applied, the *diff* flows downstream to all dependent objects.
 
 For more information, refer to:
 - [Guide: Replace Materialized Views](/transform-data/updating-materialized-views/replace-materialized-view)
