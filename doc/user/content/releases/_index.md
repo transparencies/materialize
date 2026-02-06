@@ -33,7 +33,6 @@ For more information, refer to:
 
 ### Improvements
 - **Improved hydration times for PostgreSQL sources**: PostgreSQL sources now perform parallel snapshots. This should improve initial hydration times, especially for large tables.
-- **Improved startup times when using `SUBSCRIBE`**: `SUBSCRIBE` now skips the initial snapshots when possible, resulting in faster startups.
 
 ### Bug Fixes
 - Fixed an issue where floating-point values like `-0.0` and `+0.0` could be
