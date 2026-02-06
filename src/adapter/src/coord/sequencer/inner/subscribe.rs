@@ -7,9 +7,12 @@
 // the Business Source License, use of this software will be governed
 // by the Apache License, Version 2.0.
 
+use maplit::btreemap;
 use mz_ore::instrument;
-use mz_repr::optimize::OverrideFrom;
-use mz_sql::plan::{self, QueryWhen};
+use mz_repr::GlobalId;
+use mz_repr::explain::{ExprHumanizerExt, TransientItem};
+use mz_repr::optimize::{OptimizerFeatures, OverrideFrom};
+use mz_sql::plan::{self, QueryWhen, SubscribeFrom};
 use mz_sql::session::metadata::SessionMetadata;
 use timely::progress::Antichain;
 use tokio::sync::mpsc;
@@ -20,10 +23,12 @@ use crate::command::ExecuteResponse;
 use crate::coord::sequencer::inner::return_if_err;
 use crate::coord::sequencer::{check_log_reads, emit_optimizer_notices};
 use crate::coord::{
-    Coordinator, Message, PlanValidity, StageResult, Staged, SubscribeFinish, SubscribeOptimizeMir,
-    SubscribeStage, SubscribeTimestampOptimizeLir, TargetCluster,
+    Coordinator, ExplainContext, ExplainPlanContext, Message, PlanValidity, StageResult, Staged,
+    SubscribeExplain, SubscribeFinish, SubscribeOptimizeMir, SubscribeStage,
+    SubscribeTimestampOptimizeLir, TargetCluster,
 };
 use crate::error::AdapterError;
+use crate::explain::optimizer_trace::OptimizerTrace;
 use crate::optimize::Optimize;
 use crate::session::{Session, TransactionOps};
 use crate::{AdapterNotice, ExecuteContext, TimelineContext, optimize};
@@ -36,6 +41,7 @@ impl Staged for SubscribeStage {
             SubscribeStage::OptimizeMir(stage) => &mut stage.validity,
             SubscribeStage::TimestampOptimizeLir(stage) => &mut stage.validity,
             SubscribeStage::Finish(stage) => &mut stage.validity,
+            SubscribeStage::Explain(stage) => &mut stage.validity,
         }
     }
 
@@ -50,6 +56,7 @@ impl Staged for SubscribeStage {
                 coord.subscribe_timestamp_optimize_lir(ctx, stage).await
             }
             SubscribeStage::Finish(stage) => coord.subscribe_finish(ctx, stage).await,
+            SubscribeStage::Explain(stage) => coord.subscribe_explain(ctx.session(), stage).await,
         }
     }
 
@@ -75,7 +82,60 @@ impl Coordinator {
         target_cluster: TargetCluster,
     ) {
         let stage = return_if_err!(
-            self.subscribe_validate(ctx.session_mut(), plan, target_cluster),
+            self.subscribe_validate(
+                ctx.session_mut(),
+                plan,
+                target_cluster,
+                ExplainContext::None
+            ),
+            ctx
+        );
+        self.sequence_staged(ctx, Span::current(), stage).await;
+    }
+
+    #[instrument]
+    pub(crate) async fn explain_subscribe(
+        &mut self,
+        mut ctx: ExecuteContext,
+        plan::ExplainPlanPlan {
+            stage,
+            format,
+            config,
+            explainee,
+        }: plan::ExplainPlanPlan,
+        target_cluster: TargetCluster,
+    ) {
+        let plan::Explainee::Statement(stmt) = explainee else {
+            // This is currently asserted in the `sequence_explain_plan` code that
+            // calls this method.
+            unreachable!()
+        };
+        let plan::ExplaineeStatement::Subscribe { broken, plan } = stmt else {
+            // This is currently asserted in the `sequence_explain_plan` code that
+            // calls this method.
+            unreachable!()
+        };
+
+        let desc = match &plan.from {
+            SubscribeFrom::Id(_) => None,
+            SubscribeFrom::Query { desc, .. } => Some(desc.clone()),
+        };
+
+        // Create an OptimizerTrace instance to collect plans emitted when
+        // executing the optimizer pipeline.
+        let optimizer_trace = OptimizerTrace::new(stage.paths());
+
+        let explain_ctx = ExplainContext::Plan(ExplainPlanContext {
+            broken,
+            config,
+            format,
+            stage,
+            replan: None,
+            desc,
+            optimizer_trace,
+        });
+        let stage = return_if_err!(
+            self.subscribe_validate(ctx.session_mut(), plan, target_cluster, explain_ctx),
             ctx
         );
         self.sequence_staged(ctx, Span::current(), stage).await;
@@ -87,6 +147,7 @@ impl Coordinator {
         session: &mut Session,
         plan: plan::SubscribePlan,
         target_cluster: TargetCluster,
+        explain_ctx: ExplainContext,
     ) -> Result<SubscribeStage, AdapterError> {
         let plan::SubscribePlan { from, when, .. } = &plan;
 
@@ -95,7 +156,8 @@ impl Coordinator {
             .resolve_target_cluster(target_cluster, session)?;
         let cluster_id = cluster.id;
 
-        if cluster.replicas().next().is_none() {
+        // Only check cluster replicas if we're not in explain mode.
+        if explain_ctx.needs_cluster() && cluster.replicas().next().is_none() {
             return Err(AdapterError::NoClusterReplicasAvailable {
                 name: cluster.name.clone(),
                 is_managed: cluster.is_managed(),
@@ -164,6 +226,7 @@ impl Coordinator {
             dependency_ids: depends_on,
             cluster_id,
             replica_id,
+            explain_ctx,
         }))
     }
 
@@ -177,6 +240,7 @@ impl Coordinator {
             dependency_ids,
             cluster_id,
             replica_id,
+            explain_ctx,
         }: SubscribeOptimizeMir,
     ) -> Result<StageResult<Box<SubscribeStage>>, AdapterError> {
         let plan::SubscribePlan {
@@ -193,7 +257,8 @@ impl Coordinator {
         let (_, sink_id) = self.allocate_transient_id();
         let debug_name = format!("subscribe-{}", sink_id);
         let optimizer_config = optimize::OptimizerConfig::from(self.catalog().system_config())
-            .override_from(&self.catalog.get_cluster(cluster_id).config.features());
+            .override_from(&self.catalog.get_cluster(cluster_id).config.features())
+            .override_from(&explain_ctx);
 
         // Build an optimizer for this SUBSCRIBE.
         let mut optimizer = optimize::subscribe::Optimizer::new(
@@ -214,6 +279,8 @@ impl Coordinator {
             || "optimize subscribe (mir)",
             move || {
                 span.in_scope(|| {
+                    let _dispatch_guard = explain_ctx.dispatch_guard();
+
                     // MIR ⇒ MIR optimization (global)
                     let global_mir_plan = optimizer.catch_unwind_optimize(plan.from.clone())?;
                     // Add introduced indexes as validity dependencies.
@@ -233,6 +300,7 @@ impl Coordinator {
                             global_mir_plan,
                             dependency_ids,
                             replica_id,
+                            explain_ctx,
                         });
                     Ok(Box::new(stage))
                 })
@@ -252,6 +320,7 @@ impl Coordinator {
             global_mir_plan,
             dependency_ids,
             replica_id,
+            explain_ctx,
         }: SubscribeTimestampOptimizeLir,
     ) -> Result<StageResult<Box<SubscribeStage>>, AdapterError> {
         let plan::SubscribePlan { when, .. } = &plan;
@@ -293,18 +362,59 @@ impl Coordinator {
             || "optimize subscribe (lir)",
             move || {
                 span.in_scope(|| {
-                    // MIR ⇒ LIR lowering and LIR ⇒ LIR optimization (global)
-                    let global_lir_plan =
-                        optimizer.catch_unwind_optimize(global_mir_plan.clone())?;
+                    let _dispatch_guard = explain_ctx.dispatch_guard();
 
-                    let stage = SubscribeStage::Finish(SubscribeFinish {
-                        validity,
-                        cluster_id: optimizer.cluster_id(),
-                        plan,
-                        global_lir_plan,
-                        dependency_ids,
-                        replica_id,
-                    });
+                    let cluster_id = optimizer.cluster_id();
+
+                    let mut pipeline = || -> Result<_, AdapterError> {
+                        // MIR ⇒ LIR lowering and LIR ⇒ LIR optimization (global)
+                        let global_lir_plan =
+                            optimizer.catch_unwind_optimize(global_mir_plan.clone())?;
+                        Ok(global_lir_plan)
+                    };
+
+                    let stage = match pipeline() {
+                        Ok(global_lir_plan) => {
+                            if let ExplainContext::Plan(explain_ctx) = explain_ctx {
+                                let (_, df_meta) = global_lir_plan.unapply();
+                                SubscribeStage::Explain(SubscribeExplain {
+                                    validity,
+                                    optimizer,
+                                    df_meta,
+                                    cluster_id,
+                                    explain_ctx,
+                                })
+                            } else {
+                                SubscribeStage::Finish(SubscribeFinish {
+                                    validity,
+                                    cluster_id,
+                                    plan,
+                                    global_lir_plan,
+                                    dependency_ids,
+                                    replica_id,
+                                })
+                            }
+                        }
+                        Err(err) => {
+                            let ExplainContext::Plan(explain_ctx) = explain_ctx else {
+                                return Err(err);
+                            };
+
+                            if explain_ctx.broken {
+                                tracing::error!("error while handling EXPLAIN statement: {}", err);
+                                SubscribeStage::Explain(SubscribeExplain {
+                                    validity,
+                                    optimizer,
+                                    df_meta: Default::default(),
+                                    cluster_id,
+                                    explain_ctx,
+                                })
+                            } else {
+                                return Err(err);
+                            }
+                        }
+                    };
+
                     Ok(Box::new(stage))
                 })
             },
@@ -387,5 +497,61 @@ impl Coordinator {
             },
         };
         Ok(StageResult::Response(resp))
+    }
+
+    #[instrument]
+    async fn subscribe_explain(
+        &self,
+        session: &Session,
+        SubscribeExplain {
+            optimizer,
+            df_meta,
+            cluster_id,
+            explain_ctx:
+                ExplainPlanContext {
+                    config,
+                    format,
+                    stage,
+                    optimizer_trace,
+                    desc,
+                    ..
+                },
+            ..
+        }: SubscribeExplain,
+    ) -> Result<StageResult<Box<SubscribeStage>>, AdapterError> {
+        let session_catalog = self.catalog().for_session(session);
+
+        let expr_humanizer = {
+            let transient_items = btreemap! {
+                optimizer.sink_id() => TransientItem::new(
+                    Some(vec![GlobalId::Explain.to_string()]),
+                    desc.map(|d| d.iter_names().map(|c| c.to_string()).collect()),
+                )
+            };
+            ExprHumanizerExt::new(transient_items, &session_catalog)
+        };
+
+        let target_cluster = self.catalog().get_cluster(cluster_id);
+
+        let features = OptimizerFeatures::from(self.catalog().system_config())
+            .override_from(&target_cluster.config.features())
+            .override_from(&config.features);
+
+        let rows = optimizer_trace
+            .into_rows(
+                format,
+                &config,
+                &features,
+                &expr_humanizer,
+                None,
+                Some(target_cluster),
+                df_meta,
+                stage,
+                plan::ExplaineeStatementKind::Subscribe,
+                None,
+            )
+            .await?;
+
+        Ok(StageResult::Response(Self::send_immediate_rows(rows)))
     }
 }
