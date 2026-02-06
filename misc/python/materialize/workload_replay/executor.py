@@ -135,12 +135,13 @@ def test(
             run_create_objects_part_2(c, services, workload)
             stats["object_creation"] += time.time() - start_time
         if initial_data:
-            created_data = created_data or create_initial_data_requiring_mz(
+            created_data_requiring_mz = create_initial_data_requiring_mz(
                 c,
                 workload,
                 factor_initial_data,
                 random.Random(random.randrange(SEED_RANGE)),
             )
+            created_data = created_data or created_data_requiring_mz
             stats["initial_data"]["time"] = time.time() - start_time
             if not created_data:
                 del stats["initial_data"]
