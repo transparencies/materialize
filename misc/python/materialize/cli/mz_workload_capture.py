@@ -561,13 +561,15 @@ def main() -> int:
             finished_status,
             params,
             transaction_isolation,
+            session_id,
+            transaction_id,
             began_at,
             duration,
             result_size,
         ) in query(
             conn,
             SQL(
-                "SELECT sql, cluster_name, database_name, search_path, statement_type, finished_status, params, transaction_isolation, began_at, finished_at - began_at, result_size FROM mz_internal.mz_recent_activity_log WHERE began_at > {} ORDER BY began_at ASC"
+                "SELECT sql, cluster_name, database_name, search_path, statement_type, finished_status, params, transaction_isolation, session_id, transaction_id, began_at, finished_at - began_at, result_size FROM mz_internal.mz_recent_activity_log WHERE began_at > {} ORDER BY began_at ASC"
             ).format(Literal(datetime.fromtimestamp(start_time, tz=timezone.utc))),
         ):
             assert (
@@ -583,6 +585,8 @@ def main() -> int:
                     "finished_status": finished_status,
                     "params": params,
                     "transaction_isolation": transaction_isolation,
+                    "session_id": str(session_id),
+                    "transaction_id": int(transaction_id),
                     "began_at": began_at,
                     "duration": (
                         duration.total_seconds() if duration is not None else None
