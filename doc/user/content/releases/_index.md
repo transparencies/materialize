@@ -15,6 +15,40 @@ Starting with the v26.1.0 release, Materialize releases on a weekly schedule for
 both Cloud and Self-Managed. See [Release schedule](/releases/schedule) for details.
 {{</ note >}}
 
+## v26.10.1
+*Released to Materialize Cloud: 2026-02-05* <br>
+*Released to Materialize Self-Managed: 2026-02-06* <br>
+
+This release introduces Replacement Materialized Views, performance improvements,
+and bugfixes.
+
+### Replacement Materialized Views
+{{< public-preview />}}
+Replacement materialized views allow you to modify the definition of an existing materialized view, while preserving all downstream dependencies. Materialize is able to replace a materialized view in place, by calculating the *diff* between the original and the replacement. Once applied, the *diff* flows downstream to all dependent objects.
+
+For more information, refer to:
+- [Guide: Replace Materialized Views](/transform-data/updating-materialized-views/replace-materialized-view)
+- [Syntax: CREATE REPLACEMENT MATERIALIZED VIEW](/sql/create-materialized-view)
+- [Syntax: ALTER MATERIALIZED VIEW](/sql/alter-materialized-view)
+
+### Improvements
+- **Improved hydration times for PostgreSQL sources**: PostgreSQL sources now perform parallel snapshots. This should improve initial hydration times, especially for large tables.
+
+### Bug Fixes
+- Fixed an issue where floating-point values like `-0.0` and `+0.0` could be
+  treated as different values in equality comparisons but the same in ordering,
+  causing incorrect results in operations like `DISTINCT`.
+- Fixed an issue where certain SQL keywords required incorrect quoting in
+  expressions.
+- Fixed the `ORDER BY` clause in `EXPLAIN ANALYZE MEMORY` to correctly sort by
+  memory usage instead of by the text representation.
+- Fixed a bug where the optimizer could mishandle nullability inside record
+  types.
+- Fixed an issue where the `mz_roles` system table could produce invalid
+  retractions when certain system variables were changed.
+- *Console*: Fixed SQL injection vulnerability in identifier quoting where only
+  the first quote character was being escaped.
+
 ## v26.9.0
 *Released to Materialize Cloud: 2026-01-29* <br>
 *Released to Materialize Self-Managed: 2026-01-30* <br>
