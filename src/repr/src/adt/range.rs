@@ -702,6 +702,7 @@ impl<'a, const UPPER: bool> RangeBound<Datum<'a>, UPPER> {
             None => {
                 self.inclusive = false;
             }
+            // Valid range types are defined in typeconv.rs:validate_range_element_type
             Some(value) => match value {
                 d @ Datum::Int32(_) => self.canonicalize_inner::<i32>(d)?,
                 d @ Datum::Int64(_) => self.canonicalize_inner::<i64>(d)?,

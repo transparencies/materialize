@@ -140,6 +140,10 @@ pub enum PlanError {
         from: String,
         to: String,
     },
+    /// Range type with an element type that is not supported (e.g. float, uint).
+    UnsupportedRangeElementType {
+        element_type_name: String,
+    },
     InvalidTable {
         name: String,
     },
@@ -652,6 +656,9 @@ impl fmt::Display for PlanError {
                         ""
                     },
                 )
+            }
+            Self::UnsupportedRangeElementType { element_type_name } => {
+                write!(f, "range type over {} is not supported", element_type_name)
             }
             Self::InvalidTable { name } => {
                 write!(f, "invalid table definition for {}", name.quoted())

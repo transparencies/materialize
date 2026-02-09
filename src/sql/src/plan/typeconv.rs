@@ -869,27 +869,82 @@ static VALID_CASTS: LazyLock<BTreeMap<(SqlScalarBaseType, SqlScalarBaseType), Ca
         }
     });
 
+/// Error returned when a cast is not available or not allowed.
+#[derive(Debug)]
+pub enum CastError {
+    /// No cast exists between the given types (or not in this cast context).
+    InvalidCast {
+        ccx: CastContext,
+        from: String,
+        to: String,
+    },
+    /// Cast would apply but is disallowed (e.g. range over an unsupported element type).
+    UnsupportedRangeElementType { element_type_name: String },
+}
+
+impl CastError {
+    /// Convert to a [`PlanError`] for use in planning; requires the expression name for context.
+    pub fn into_plan_error(self, name: String) -> PlanError {
+        match self {
+            CastError::InvalidCast { ccx, from, to } => PlanError::InvalidCast {
+                name,
+                ccx,
+                from,
+                to,
+            },
+            CastError::UnsupportedRangeElementType { element_type_name } => {
+                PlanError::UnsupportedRangeElementType { element_type_name }
+            }
+        }
+    }
+}
+
 /// Get casts directly between two [`SqlScalarType`]s, with control over the
 /// allowed [`CastContext`].
+///
+/// Returns `Err` when the cast is not supported: either no cast exists
+/// ([`CastError::InvalidCast`]) or the cast is disallowed
+/// ([`CastError::UnsupportedRangeElementType`], e.g. range over float/uint).
 fn get_cast(
     ecx: &ExprContext,
     ccx: CastContext,
     from: &SqlScalarType,
     to: &SqlScalarType,
-) -> Option<Cast> {
+) -> Result<Cast, CastError> {
     use CastContext::*;
 
     if from == to || (ccx == Implicit && from.base_eq(to)) {
-        return Some(Box::new(|expr| expr));
+        return Ok(Box::new(|expr| expr));
     }
 
-    let imp = VALID_CASTS.get(&(from.into(), to.into()))?;
+    // Reject casts to range types with unsupported element types at plan time.
+    if let SqlScalarType::Range { element_type } = to {
+        validate_range_element_type(ecx, element_type)?;
+    }
+
+    let imp = match VALID_CASTS.get(&(from.into(), to.into())) {
+        Some(imp) => imp,
+        None => {
+            return Err(CastError::InvalidCast {
+                ccx,
+                from: ecx.humanize_scalar_type(from, false),
+                to: ecx.humanize_scalar_type(to, false),
+            });
+        }
+    };
     let template = if ccx >= imp.context {
         Some(&imp.template)
     } else {
         None
     };
-    template.and_then(|template| (template.0)(ecx, ccx, from, to))
+    match template.and_then(|template| (template.0)(ecx, ccx, from, to)) {
+        Some(cast) => Ok(cast),
+        None => Err(CastError::InvalidCast {
+            ccx,
+            from: ecx.humanize_scalar_type(from, false),
+            to: ecx.humanize_scalar_type(to, false),
+        }),
+    }
 }
 
 /// Converts an expression to `SqlScalarType::String`.
@@ -1178,6 +1233,31 @@ pub fn plan_coerce<'a>(
     })
 }
 
+/// Returns an error if the given type is not a supported range element type
+/// (PostgreSQL built-in range types: int32, int64, date, numeric, timestamp,
+/// timestamptz).
+fn validate_range_element_type(
+    ecx: &ExprContext,
+    element_type: &SqlScalarType,
+) -> Result<(), CastError> {
+    let allowed = matches!(
+        element_type,
+        SqlScalarType::Int32
+            | SqlScalarType::Int64
+            | SqlScalarType::Date
+            | SqlScalarType::Numeric { .. }
+            | SqlScalarType::Timestamp { .. }
+            | SqlScalarType::TimestampTz { .. }
+    );
+    if allowed {
+        Ok(())
+    } else {
+        Err(CastError::UnsupportedRangeElementType {
+            element_type_name: ecx.humanize_scalar_type(element_type, false),
+        })
+    }
+}
+
 /// Similar to `plan_cast`, but for situations where you only know the type of
 /// the input expression (`from`) and not the expression itself. The returned
 /// expression refers to the first column of some imaginary row, where the first
@@ -1243,14 +1323,10 @@ pub fn plan_cast(
 
     // Close over `ccx`, `from`, and `to` to simplify error messages in the
     // face of intermediate expressions.
-    let cast_inner = |from, to, expr| match get_cast(ecx, ccx, from, to) {
-        Some(cast) => Ok(cast(expr)),
-        None => Err(PlanError::InvalidCast {
-            name: ecx.name.into(),
-            ccx,
-            from: ecx.humanize_scalar_type(from, false),
-            to: ecx.humanize_scalar_type(to, false),
-        }),
+    let cast_inner = |from, to, expr| {
+        get_cast(ecx, ccx, from, to)
+            .map(|cast| cast(expr))
+            .map_err(|e| e.into_plan_error(ecx.name.into()))
     };
 
     // Get cast which might include parameter rewrites + generating intermediate
@@ -1282,5 +1358,5 @@ pub fn can_cast(
     cast_from: &SqlScalarType,
     cast_to: &SqlScalarType,
 ) -> bool {
-    get_cast(ecx, ccx, cast_from, cast_to).is_some()
+    get_cast(ecx, ccx, cast_from, cast_to).is_ok()
 }
