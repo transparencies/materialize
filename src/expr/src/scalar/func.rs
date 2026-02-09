@@ -30,7 +30,6 @@ use mz_ore::cast::{self, CastFrom};
 use mz_ore::fmt::FormatBuffer;
 use mz_ore::lex::LexBuf;
 use mz_ore::option::OptionExt;
-use mz_ore::str::StrExt;
 use mz_pgrepr::Type;
 use mz_pgtz::timezone::{Timezone, TimezoneSpec};
 use mz_repr::adt::array::{Array, ArrayDimension};
@@ -2562,7 +2561,7 @@ pub enum BinaryFunc {
     MzAclItemContainsPrivilege(MzAclItemContainsPrivilege),
     ParseIdent(ParseIdent),
     PrettySql(PrettySql),
-    RegexpReplace { regex: Regex, limit: usize },
+    RegexpReplace(RegexpReplace),
     StartsWith(StartsWith),
 }
 
@@ -2575,358 +2574,237 @@ impl BinaryFunc {
         b_expr: &'a MirScalarExpr,
     ) -> Result<Datum<'a>, EvalError> {
         match self {
-            BinaryFunc::AddInt16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddInt32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddInt64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddUint16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddUint32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddUint64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddFloat32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddFloat64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddInterval(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddTimestampInterval(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::AddTimestampTzInterval(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::AddDateTime(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddDateInterval(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddTimeInterval(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AddNumeric(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AgeTimestamp(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::AgeTimestampTz(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitAndInt16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitAndInt32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitAndInt64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitAndUint16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitAndUint32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitAndUint64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitOrInt16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitOrInt32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitOrInt64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitOrUint16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitOrUint32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitOrUint64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitXorInt16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitXorInt32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitXorInt64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitXorUint16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitXorUint32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitXorUint64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::BitShiftLeftInt16(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::BitShiftLeftInt32(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::BitShiftLeftInt64(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::BitShiftLeftUint16(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::BitShiftLeftUint32(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::BitShiftLeftUint64(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::BitShiftRightInt16(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::BitShiftRightInt32(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::BitShiftRightInt64(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::BitShiftRightUint16(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::BitShiftRightUint32(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::BitShiftRightUint64(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::SubInt16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubInt32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubInt64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubUint16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubUint32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubUint64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubFloat32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubFloat64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubTimestamp(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubTimestampTz(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubTimestampInterval(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::SubTimestampTzInterval(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::SubInterval(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubDate(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubDateInterval(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubTime(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubTimeInterval(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::SubNumeric(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MulInt16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MulInt32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MulInt64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MulUint16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MulUint32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MulUint64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MulFloat32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MulFloat64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MulNumeric(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MulInterval(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DivInt16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DivInt32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DivInt64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DivUint16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DivUint32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DivUint64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DivFloat32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DivFloat64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DivNumeric(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DivInterval(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ModInt16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ModInt32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ModInt64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ModUint16(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ModUint32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ModUint64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ModFloat32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ModFloat64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ModNumeric(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Eq(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::NotEq(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Lt(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Lte(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Gt(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Gte(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::LikeEscape(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddInt16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddInt32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddUint16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddUint32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddUint64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddFloat32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddFloat64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddTimestampInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddTimestampTzInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddDateTime(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddDateInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddTimeInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AddNumeric(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AgeTimestamp(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::AgeTimestampTz(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitAndInt16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitAndInt32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitAndInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitAndUint16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitAndUint32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitAndUint64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitOrInt16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitOrInt32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitOrInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitOrUint16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitOrUint32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitOrUint64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitXorInt16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitXorInt32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitXorInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitXorUint16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitXorUint32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitXorUint64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftLeftInt16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftLeftInt32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftLeftInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftLeftUint16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftLeftUint32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftLeftUint64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftRightInt16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftRightInt32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftRightInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftRightUint16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftRightUint32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::BitShiftRightUint64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubInt16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubInt32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubUint16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubUint32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubUint64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubFloat32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubFloat64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubTimestamp(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubTimestampTz(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubTimestampInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubTimestampTzInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubDate(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubDateInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubTime(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubTimeInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::SubNumeric(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MulInt16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MulInt32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MulInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MulUint16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MulUint32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MulUint64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MulFloat32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MulFloat64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MulNumeric(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MulInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DivInt16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DivInt32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DivInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DivUint16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DivUint32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DivUint64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DivFloat32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DivFloat64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DivNumeric(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DivInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ModInt16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ModInt32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ModInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ModUint16(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ModUint32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ModUint64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ModFloat32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ModFloat64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ModNumeric(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Eq(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::NotEq(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Lt(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Lte(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Gt(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Gte(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::LikeEscape(s) => s.eval(datums, temp_storage, a_expr, b_expr),
             BinaryFunc::IsLikeMatchCaseInsensitive(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
+                s.eval(datums, temp_storage, a_expr, b_expr)
             }
-            BinaryFunc::IsLikeMatchCaseSensitive(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
+            BinaryFunc::IsLikeMatchCaseSensitive(s) => s.eval(datums, temp_storage, a_expr, b_expr),
             BinaryFunc::IsRegexpMatchCaseSensitive(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
+                s.eval(datums, temp_storage, a_expr, b_expr)
             }
             BinaryFunc::IsRegexpMatchCaseInsensitive(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
+                s.eval(datums, temp_storage, a_expr, b_expr)
             }
-            BinaryFunc::ToCharTimestamp(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ToCharTimestampTz(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::DateBinTimestamp(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DateBinTimestampTz(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::ExtractInterval(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ExtractTime(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ExtractTimestamp(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ExtractTimestampTz(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::ExtractDate(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DatePartInterval(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DatePartTime(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DatePartTimestamp(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::DatePartTimestampTz(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::DateTruncTimestamp(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::DateTruncInterval(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::DateTruncTimestampTz(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::TimezoneTimestampBinary(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
+            BinaryFunc::ToCharTimestamp(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ToCharTimestampTz(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DateBinTimestamp(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DateBinTimestampTz(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ExtractInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ExtractTime(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ExtractTimestamp(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ExtractTimestampTz(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ExtractDate(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DatePartInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DatePartTime(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DatePartTimestamp(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DatePartTimestampTz(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DateTruncTimestamp(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DateTruncInterval(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DateTruncTimestampTz(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::TimezoneTimestampBinary(s) => s.eval(datums, temp_storage, a_expr, b_expr),
             BinaryFunc::TimezoneTimestampTzBinary(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
+                s.eval(datums, temp_storage, a_expr, b_expr)
             }
             BinaryFunc::TimezoneIntervalTimestampBinary(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
+                s.eval(datums, temp_storage, a_expr, b_expr)
             }
             BinaryFunc::TimezoneIntervalTimestampTzBinary(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
+                s.eval(datums, temp_storage, a_expr, b_expr)
             }
             BinaryFunc::TimezoneIntervalTimeBinary(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
+                s.eval(datums, temp_storage, a_expr, b_expr)
             }
-            BinaryFunc::TimezoneOffset(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::TextConcat(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::JsonbGetInt64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::JsonbGetInt64Stringify(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::JsonbGetString(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::JsonbGetStringStringify(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::JsonbGetPath(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::JsonbGetPathStringify(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::JsonbContainsString(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::JsonbConcat(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::JsonbContainsJsonb(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::JsonbDeleteInt64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::JsonbDeleteString(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::MapContainsKey(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MapGetValue(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MapContainsAllKeys(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::MapContainsAnyKeys(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::MapContainsMap(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::RoundNumeric(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ConvertFrom(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Encode(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Decode(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Left(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Position(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Right(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Trim(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::TrimLeading(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::TrimTrailing(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::EncodedBytesCharLength(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::ListLengthMax(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ArrayLength(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ArrayContains(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ArrayContainsArray(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::ArrayContainsArrayRev(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::ArrayLower(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ArrayRemove(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ArrayUpper(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ArrayArrayConcat(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ListListConcat(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ListElementConcat(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::ElementListConcat(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::ListRemove(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ListContainsList(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ListContainsListRev(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::DigestString(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::DigestBytes(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::MzRenderTypmod(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::LogNumeric(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Power(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::PowerNumeric(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::RepeatString(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::Normalize(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::GetBit(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::GetByte(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::ConstantTimeEqBytes(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::ConstantTimeEqString(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::RangeContainsDate(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::RangeContainsDateRev(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::RangeContainsI32(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::RangeContainsI32Rev(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::RangeContainsI64(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::RangeContainsI64Rev(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::RangeContainsNumeric(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::RangeContainsNumericRev(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::RangeContainsRange(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::RangeContainsTimestamp(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
+            BinaryFunc::TimezoneOffset(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::TextConcat(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::JsonbGetInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::JsonbGetInt64Stringify(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::JsonbGetString(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::JsonbGetStringStringify(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::JsonbGetPath(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::JsonbGetPathStringify(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::JsonbContainsString(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::JsonbConcat(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::JsonbContainsJsonb(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::JsonbDeleteInt64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::JsonbDeleteString(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MapContainsKey(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MapGetValue(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MapContainsAllKeys(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MapContainsAnyKeys(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MapContainsMap(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RoundNumeric(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ConvertFrom(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Encode(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Decode(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Left(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Position(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Right(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Trim(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::TrimLeading(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::TrimTrailing(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::EncodedBytesCharLength(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ListLengthMax(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ArrayLength(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ArrayContains(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ArrayContainsArray(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ArrayContainsArrayRev(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ArrayLower(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ArrayRemove(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ArrayUpper(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ArrayArrayConcat(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ListListConcat(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ListElementConcat(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ElementListConcat(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ListRemove(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ListContainsList(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ListContainsListRev(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DigestString(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::DigestBytes(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::MzRenderTypmod(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::LogNumeric(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Power(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::PowerNumeric(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RepeatString(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::Normalize(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::GetBit(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::GetByte(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ConstantTimeEqBytes(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::ConstantTimeEqString(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeContainsDate(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeContainsDateRev(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeContainsI32(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeContainsI32Rev(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeContainsI64(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeContainsI64Rev(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeContainsNumeric(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeContainsNumericRev(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeContainsRange(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeContainsTimestamp(s) => s.eval(datums, temp_storage, a_expr, b_expr),
             BinaryFunc::RangeContainsTimestampRev(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
+                s.eval(datums, temp_storage, a_expr, b_expr)
             }
-            BinaryFunc::RangeContainsTimestampTz(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
+            BinaryFunc::RangeContainsTimestampTz(s) => s.eval(datums, temp_storage, a_expr, b_expr),
             BinaryFunc::RangeContainsTimestampTzRev(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
+                s.eval(datums, temp_storage, a_expr, b_expr)
             }
-            BinaryFunc::RangeContainsRangeRev(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::RangeOverlaps(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::RangeAfter(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::RangeBefore(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::RangeOverleft(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::RangeOverright(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::RangeAdjacent(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::RangeUnion(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::RangeIntersection(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
-            }
-            BinaryFunc::RangeDifference(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::UuidGenerateV5(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeContainsRangeRev(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeOverlaps(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeAfter(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeBefore(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeOverleft(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeOverright(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeAdjacent(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeUnion(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeIntersection(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RangeDifference(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::UuidGenerateV5(s) => s.eval(datums, temp_storage, a_expr, b_expr),
             BinaryFunc::MzAclItemContainsPrivilege(s) => {
-                return s.eval(datums, temp_storage, a_expr, b_expr);
+                s.eval(datums, temp_storage, a_expr, b_expr)
             }
-            BinaryFunc::ParseIdent(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            BinaryFunc::PrettySql(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            // BinaryFunc::RegexpReplace { regex, limit } => {
-            //     regexp_replace_static(a, b, regex, *limit, temp_storage)
-            // }
-            BinaryFunc::StartsWith(s) => return s.eval(datums, temp_storage, a_expr, b_expr),
-            _ => { /* fall through */ }
-        }
-
-        let a = a_expr.eval(datums, temp_storage)?;
-        let b = b_expr.eval(datums, temp_storage)?;
-        if self.propagates_nulls() && (a.is_null() || b.is_null()) {
-            return Ok(Datum::Null);
-        }
-        match self {
-            BinaryFunc::RegexpReplace { regex, limit } => {
-                regexp_replace_static(a, b, regex, *limit, temp_storage)
-            }
-            _ => unreachable!(),
+            BinaryFunc::ParseIdent(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::PrettySql(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::RegexpReplace(s) => s.eval(datums, temp_storage, a_expr, b_expr),
+            BinaryFunc::StartsWith(s) => s.eval(datums, temp_storage, a_expr, b_expr),
         }
     }
 
@@ -2936,7 +2814,6 @@ impl BinaryFunc {
         input2_type: SqlColumnType,
     ) -> SqlColumnType {
         use BinaryFunc::*;
-        let in_nullable = input1_type.nullable || input2_type.nullable;
         match self {
             AddInt16(s) => s.output_type(input1_type, input2_type),
             AddInt32(s) => s.output_type(input1_type, input2_type),
@@ -3190,7 +3067,7 @@ impl BinaryFunc {
 
             ParseIdent(s) => s.output_type(input1_type, input2_type),
             PrettySql(s) => s.output_type(input1_type, input2_type),
-            RegexpReplace { .. } => SqlScalarType::String.nullable(in_nullable),
+            RegexpReplace(s) => s.output_type(input1_type, input2_type),
 
             StartsWith(s) => s.output_type(input1_type, input2_type),
         }
@@ -3374,7 +3251,7 @@ impl BinaryFunc {
             BinaryFunc::RangeOverleft(s) => s.propagates_nulls(),
             BinaryFunc::RangeOverright(s) => s.propagates_nulls(),
             BinaryFunc::RangeUnion(s) => s.propagates_nulls(),
-            BinaryFunc::RegexpReplace { .. } => true,
+            BinaryFunc::RegexpReplace(s) => s.propagates_nulls(),
             BinaryFunc::RepeatString(s) => s.propagates_nulls(),
             BinaryFunc::Right(s) => s.propagates_nulls(),
             BinaryFunc::RoundNumeric(s) => s.propagates_nulls(),
@@ -3582,7 +3459,7 @@ impl BinaryFunc {
             RangeOverleft(s) => s.introduces_nulls(),
             RangeOverright(s) => s.introduces_nulls(),
             RangeUnion(s) => s.introduces_nulls(),
-            RegexpReplace { .. } => false,
+            RegexpReplace(s) => s.introduces_nulls(),
             RepeatString(s) => s.introduces_nulls(),
             Right(s) => s.introduces_nulls(),
             RoundNumeric(s) => s.introduces_nulls(),
@@ -3834,7 +3711,7 @@ impl BinaryFunc {
             Power(s) => s.is_infix_op(),
             PowerNumeric(s) => s.is_infix_op(),
             PrettySql(s) => s.is_infix_op(),
-            RegexpReplace { .. } => false,
+            RegexpReplace(s) => s.is_infix_op(),
             RepeatString(s) => s.is_infix_op(),
             Right(s) => s.is_infix_op(),
             RoundNumeric(s) => s.is_infix_op(),
@@ -4032,7 +3909,7 @@ impl BinaryFunc {
             BinaryFunc::RangeOverleft(s) => s.negate(),
             BinaryFunc::RangeOverright(s) => s.negate(),
             BinaryFunc::RangeUnion(s) => s.negate(),
-            BinaryFunc::RegexpReplace { .. } => None,
+            BinaryFunc::RegexpReplace(s) => s.negate(),
             BinaryFunc::RepeatString(s) => s.negate(),
             BinaryFunc::Right(s) => s.negate(),
             BinaryFunc::RoundNumeric(s) => s.negate(),
@@ -4286,7 +4163,7 @@ impl BinaryFunc {
             BinaryFunc::MzAclItemContainsPrivilege(s) => s.could_error(),
             BinaryFunc::ParseIdent(s) => s.could_error(),
             BinaryFunc::PrettySql(s) => s.could_error(),
-            BinaryFunc::RegexpReplace { .. } => true,
+            BinaryFunc::RegexpReplace(s) => s.could_error(),
         }
     }
 
@@ -4518,7 +4395,7 @@ impl BinaryFunc {
             BinaryFunc::ConstantTimeEqBytes(s) => s.is_monotone(),
             BinaryFunc::ConstantTimeEqString(s) => s.is_monotone(),
             BinaryFunc::PrettySql(s) => s.is_monotone(),
-            BinaryFunc::RegexpReplace { .. } => (false, false),
+            BinaryFunc::RegexpReplace(s) => s.is_monotone(),
             BinaryFunc::StartsWith(s) => s.is_monotone(),
             BinaryFunc::Normalize(s) => s.is_monotone(),
         }
@@ -4737,13 +4614,7 @@ impl fmt::Display for BinaryFunc {
             BinaryFunc::MzAclItemContainsPrivilege(s) => s.fmt(f),
             BinaryFunc::ParseIdent(s) => s.fmt(f),
             BinaryFunc::PrettySql(s) => s.fmt(f),
-            BinaryFunc::RegexpReplace { regex, limit } => write!(
-                f,
-                "regexp_replace[{}, case_insensitive={}, limit={}]",
-                regex.pattern().escaped(),
-                regex.case_insensitive,
-                limit
-            ),
+            BinaryFunc::RegexpReplace(s) => s.fmt(f),
             BinaryFunc::StartsWith(s) => s.fmt(f),
         }
     }
@@ -4859,23 +4730,6 @@ pub(crate) fn regexp_replace_parse_flags(flags: &str) -> (usize, Cow<'_, str>) {
         (1, Cow::Borrowed(flags))
     };
     (limit, flags)
-}
-
-// WARNING: This function has potential OOM risk if used with an inflationary
-// replacement pattern. It is very difficult to calculate the output size ahead
-// of time because the replacement pattern may depend on capture groups.
-fn regexp_replace_static<'a>(
-    source: Datum<'a>,
-    replacement: Datum<'a>,
-    regexp: &regex::Regex,
-    limit: usize,
-    temp_storage: &'a RowArena,
-) -> Result<Datum<'a>, EvalError> {
-    let replaced = match regexp.replacen(source.unwrap_str(), limit, replacement.unwrap_str()) {
-        Cow::Borrowed(s) => s,
-        Cow::Owned(s) => temp_storage.push_string(s),
-    };
-    Ok(Datum::String(replaced))
 }
 
 pub fn build_regex(needle: &str, flags: &str) -> Result<Regex, EvalError> {
