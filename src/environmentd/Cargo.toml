@@ -41,7 +41,7 @@ maplit = "1.0.2"
 mime = "0.3.16"
 mz-alloc = { path = "../alloc" }
 mz-alloc-default = { path = "../alloc-default", optional = true }
-mz-auth = { path = "../auth" }
+mz-auth = { path = "../auth", default-features = false }
 mz-authenticator = { path = "../authenticator" }
 mz-aws-secrets-controller = { path = "../aws-secrets-controller" }
 mz-build-info = { path = "../build-info" }
@@ -141,6 +141,7 @@ insta = { version = "1.45", features = ["json"] }
 itertools = "0.14.0"
 jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
 mz-environmentd = { path = "../environmentd", default-features = false, features = ["test"] }
+mz-oidc-mock = { path = "../oidc-mock", default-features = false }
 mz-pgrepr = { path = "../pgrepr" }
 mz-pgtest = { path = "../pgtest" }
 mz-repr = { path = "../repr" }

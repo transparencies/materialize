@@ -2647,6 +2647,23 @@ fn test_internal_http_auth() {
     // can be explicitly set to mz_system
     assert!(res.text().unwrap().to_string().contains("mz_system"));
 
+    // Check that mz_system is a superuser
+    let json_superuser = serde_json::json!({"query": "SHOW is_superuser;"});
+    let res = Client::new()
+        .post(url.clone())
+        .header("x-materialize-user", "mz_system")
+        .json(&json_superuser)
+        .send()
+        .unwrap();
+
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "{:?}",
+        res.json::<serde_json::Value>()
+    );
+    assert!(res.text().unwrap().to_string().contains("on"));
+
     let res = Client::new()
         .post(url.clone())
         .header("x-materialize-user", "mz_support")
@@ -2654,7 +2671,6 @@ fn test_internal_http_auth() {
         .send()
         .unwrap();
 
-    tracing::info!("response: {res:?}");
     assert_eq!(
         res.status(),
         StatusCode::OK,
@@ -2664,6 +2680,22 @@ fn test_internal_http_auth() {
     // can be explicitly set to mz_support
     assert!(res.text().unwrap().to_string().contains("mz_support"));
 
+    // Check that mz_support is not a superuser
+    let res = Client::new()
+        .post(url.clone())
+        .header("x-materialize-user", "mz_support")
+        .json(&json_superuser)
+        .send()
+        .unwrap();
+
+    assert_eq!(
+        res.status(),
+        StatusCode::OK,
+        "{:?}",
+        res.json::<serde_json::Value>()
+    );
+    assert!(res.text().unwrap().to_string().contains("off"));
+
     let res = Client::new()
         .post(url.clone())
         .header("x-materialize-user", "invalid value")
@@ -2671,7 +2703,6 @@ fn test_internal_http_auth() {
         .send()
         .unwrap();
 
-    tracing::info!("response: {res:?}");
     // invalid header returns an error
     assert_eq!(res.status(), StatusCode::UNAUTHORIZED, "{:?}", res.text());
 }
