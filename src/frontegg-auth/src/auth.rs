@@ -98,6 +98,9 @@ impl Authenticator {
         // See this conversation [0] from the Materialize–Frontegg shared Slack
         // channel on 1 January 2024.
         //
+        // NOTE we do validate that the tenantId claim matches the expected tenant_id
+        // in order to ensure that the JWT was created for the specific environment.
+        //
         // [0]: https://materializeinc.slack.com/archives/C02940WNMRQ/p1704131331041669
         validation.validate_aud = false;
 
