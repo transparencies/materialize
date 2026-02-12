@@ -127,3 +127,37 @@ FROM
 {"1 2","3 4"}
 5
 6
+
+# Ensure that empty int2vectors are handled correctly.
+# Empty int2vector formats as (empty); cast to text so we don't send int2vector (no binary encoding).
+query T
+SELECT ''::pg_catalog.int2vector::text
+----
+(empty)
+
+# Table with int2vector column and default ''; select returns x::text to avoid binary encoding.
+statement ok
+CREATE TABLE t (x int2vector default '');
+
+query T
+SELECT x::text FROM t;
+----
+
+# Insert empty int2vector
+statement ok
+INSERT INTO t VALUES ('');
+
+query T
+SELECT x::text FROM t;
+----
+(empty)
+
+# Insert single-element int2vector
+statement ok
+INSERT INTO t VALUES ('1');
+
+query T
+SELECT x::text FROM t ORDER BY x::text DESC;
+----
+1
+(empty)

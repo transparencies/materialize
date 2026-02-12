@@ -1066,7 +1066,7 @@ impl<'a> Datum<'a> {
                         })
                     }
                     (Datum::Array(array), ReprScalarType::Int2Vector) => {
-                        array.dims().len() == 1
+                        array.has_int2vector_dims()
                             && array
                                 .elements
                                 .iter()
@@ -1204,7 +1204,7 @@ impl<'a> Datum<'a> {
                         })
                     }
                     (Datum::Array(array), SqlScalarType::Int2Vector) => {
-                        array.dims().len() == 1
+                        array.has_int2vector_dims()
                             && array
                                 .elements
                                 .iter()

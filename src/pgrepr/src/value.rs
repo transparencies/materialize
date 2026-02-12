@@ -174,8 +174,10 @@ impl Value {
                 Some(Value::Array { dims, elements })
             }
             (Datum::Array(array), SqlScalarType::Int2Vector) => {
-                let dims = array.dims().into_iter();
-                assert!(dims.count() == 1, "int2vector must be 1 dimensional");
+                assert!(
+                    array.has_int2vector_dims(),
+                    "int2vector must be 1 dimensional, or empty"
+                );
                 let elements = array
                     .elements()
                     .iter()

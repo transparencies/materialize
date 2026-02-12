@@ -46,6 +46,13 @@ impl<'a> Array<'a> {
     pub fn elements(&self) -> DatumList<'a> {
         self.elements
     }
+
+    /// Returns true if this array's dimensions are valid for the Int2Vector type.
+    /// Int2Vector is 1-D; empty arrays use 0 dimensions (PostgreSQL convention).
+    pub fn has_int2vector_dims(&self) -> bool {
+        self.dims().len() == 1
+            || (self.dims().len() == 0 && self.elements().iter().next().is_none())
+    }
 }
 
 /// The dimensions of an [`Array`].
@@ -289,11 +296,85 @@ impl FixedSizeCodec<ArrayDimension> for PackedArrayDimension {
 
 #[cfg(test)]
 mod tests {
+    use std::iter::empty;
+
     use mz_ore::assert_ok;
     use mz_proto::protobuf_roundtrip;
     use proptest::prelude::*;
 
+    use crate::Datum;
+    use crate::row::Row;
+
     use super::*;
+
+    #[mz_ore::test]
+    fn test_has_int2vector_dims() {
+        // 1-D array with elements: valid for int2vector
+        let mut row = Row::default();
+        row.packer()
+            .try_push_array(
+                &[ArrayDimension {
+                    lower_bound: 1,
+                    length: 2,
+                }],
+                [Datum::Int16(1), Datum::Int16(2)],
+            )
+            .unwrap();
+        let arr = row.unpack_first().unwrap_array();
+        assert!(
+            arr.has_int2vector_dims(),
+            "1-D array should have int2vector dims"
+        );
+
+        // 1-D empty array (length 0): valid
+        let mut row = Row::default();
+        row.packer()
+            .try_push_array(
+                &[ArrayDimension {
+                    lower_bound: 1,
+                    length: 0,
+                }],
+                empty::<Datum>(),
+            )
+            .unwrap();
+        let arr = row.unpack_first().unwrap_array();
+        assert!(
+            arr.has_int2vector_dims(),
+            "1-D empty array should have int2vector dims"
+        );
+
+        // 0-D empty array (PostgreSQL convention for empty): valid
+        let mut row = Row::default();
+        row.packer().try_push_array(&[], empty::<Datum>()).unwrap();
+        let arr = row.unpack_first().unwrap_array();
+        assert!(
+            arr.has_int2vector_dims(),
+            "0-D empty array should have int2vector dims"
+        );
+
+        // 2-D array: invalid for int2vector
+        let mut row = Row::default();
+        row.packer()
+            .try_push_array(
+                &[
+                    ArrayDimension {
+                        lower_bound: 1,
+                        length: 1,
+                    },
+                    ArrayDimension {
+                        lower_bound: 1,
+                        length: 2,
+                    },
+                ],
+                [Datum::Int16(1), Datum::Int16(2)],
+            )
+            .unwrap();
+        let arr = row.unpack_first().unwrap_array();
+        assert!(
+            !arr.has_int2vector_dims(),
+            "2-D array should not have int2vector dims"
+        );
+    }
 
     proptest! {
         #[mz_ore::test]
