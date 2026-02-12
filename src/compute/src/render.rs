@@ -137,6 +137,7 @@ use mz_storage_types::controller::CollectionMetadata;
 use mz_storage_types::errors::DataflowError;
 use mz_timely_util::operator::{CollectionExt, StreamExt};
 use mz_timely_util::probe::{Handle as MzProbeHandle, ProbeNotify};
+use mz_timely_util::scope_label::ScopeExt;
 use timely::PartialOrder;
 use timely::communication::Allocate;
 use timely::container::CapacityContainerBuilder;
@@ -220,6 +221,8 @@ pub fn build_compute_dataflow<A: Allocate>(
     let build_name = format!("BuildRegion: {}", &dataflow.debug_name);
 
     timely_worker.dataflow_core(&name, worker_logging, Box::new(()), |_, scope| {
+        let scope = &mut scope.with_label();
+
         // TODO(ct3): This should be a config of the source instead, but at least try
         // to contain the hacks.
         let mut ct_ctx = ContinualTaskCtx::new(&dataflow);
@@ -561,7 +564,7 @@ pub fn build_compute_dataflow<A: Allocate>(
                 }
             });
         }
-    })
+    });
 }
 
 // This implementation block allows child timestamps to vary from parent timestamps,

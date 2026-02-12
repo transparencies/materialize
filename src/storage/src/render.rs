@@ -209,6 +209,7 @@ use mz_storage_types::oneshot_sources::{OneshotIngestionDescription, OneshotInge
 use mz_storage_types::sinks::StorageSinkDesc;
 use mz_storage_types::sources::{GenericSourceConnection, IngestionDescription, SourceConnection};
 use mz_timely_util::antichain::AntichainExt;
+use mz_timely_util::scope_label::ScopeExt;
 use timely::communication::Allocate;
 use timely::dataflow::Scope;
 use timely::dataflow::operators::{Concatenate, ConnectLoop, Feedback, Leave, Map};
@@ -244,6 +245,8 @@ pub fn build_ingestion_dataflow<A: Allocate>(
     let name = format!("Source dataflow: {debug_name}");
     timely_worker.dataflow_core(&name, worker_logging, Box::new(()), |_, root_scope| {
         let root_scope: &mut Child<_, ()> = root_scope;
+        let root_scope = &mut root_scope.with_label();
+
         // Here we need to create two scopes. One timestamped with `()`, which is the root scope,
         // and one timestamped with `mz_repr::Timestamp` which is the final scope of the dataflow.
         // Refer to the module documentation for an explanation of this structure.
@@ -440,41 +443,37 @@ pub fn build_export_dataflow<A: Allocate>(
     let worker_logging = timely_worker.logger_for("timely").map(Into::into);
     let debug_name = id.to_string();
     let name = format!("Source dataflow: {debug_name}");
-    timely_worker.dataflow_core(&name, worker_logging, Box::new(()), |_, root_scope| {
-        // The scope.clone() occurs to allow import in the region.
-        // We build a region here to establish a pattern of a scope inside the dataflow
-        // so that other similar uses (e.g. with iterative scopes) do not require weird
-        // alternate type signatures.
-        root_scope.region_named(&name, |scope| {
-            let mut tokens = vec![];
-            let (health_stream, sink_tokens) =
-                crate::render::sinks::render_sink(scope, storage_state, id, &description);
-            tokens.extend(sink_tokens);
+    timely_worker.dataflow_core(&name, worker_logging, Box::new(()), |_, scope| {
+        let scope = &mut scope.with_label();
 
-            // Note that sinks also have only 1 active worker, which simplifies the work that
-            // `health_operator` has to do internally.
-            let health_token = crate::healthcheck::health_operator(
-                scope,
-                storage_state.now.clone(),
-                [id].into_iter().collect(),
-                id,
-                "sink",
-                &health_stream,
-                crate::healthcheck::DefaultWriter {
-                    command_tx: storage_state.internal_cmd_tx.clone(),
-                    updates: Rc::clone(&storage_state.shared_status_updates),
-                },
-                storage_state
-                    .storage_configuration
-                    .parameters
-                    .record_namespaced_errors,
-                dyncfgs::STORAGE_SUSPEND_AND_RESTART_DELAY
-                    .get(storage_state.storage_configuration.config_set()),
-            );
-            tokens.push(health_token);
+        let mut tokens = vec![];
+        let (health_stream, sink_tokens) =
+            crate::render::sinks::render_sink(scope, storage_state, id, &description);
+        tokens.extend(sink_tokens);
 
-            storage_state.sink_tokens.insert(id, tokens);
-        })
+        // Note that sinks also have only 1 active worker, which simplifies the work that
+        // `health_operator` has to do internally.
+        let health_token = crate::healthcheck::health_operator(
+            scope,
+            storage_state.now.clone(),
+            [id].into_iter().collect(),
+            id,
+            "sink",
+            &health_stream,
+            crate::healthcheck::DefaultWriter {
+                command_tx: storage_state.internal_cmd_tx.clone(),
+                updates: Rc::clone(&storage_state.shared_status_updates),
+            },
+            storage_state
+                .storage_configuration
+                .parameters
+                .record_namespaced_errors,
+            dyncfgs::STORAGE_SUSPEND_AND_RESTART_DELAY
+                .get(storage_state.storage_configuration.config_set()),
+        );
+        tokens.push(health_token);
+
+        storage_state.sink_tokens.insert(id, tokens);
     });
 }
 
@@ -499,7 +498,9 @@ pub(crate) fn build_oneshot_ingestion_dataflow<A: Allocate>(
         .connection_context
         .clone();
 
-    let tokens = timely_worker.dataflow(|scope| {
+    let name = format!("Oneshot ingestion: {ingestion_id}");
+    let tokens = timely_worker.dataflow_named(&name, |scope| {
+        let scope = &mut scope.with_label();
         mz_storage_operators::oneshot_source::render(
             scope.clone(),
             Arc::clone(&storage_state.persist_clients),

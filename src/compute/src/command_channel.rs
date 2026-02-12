@@ -29,12 +29,13 @@ use itertools::Itertools;
 use mz_compute_client::protocol::command::ComputeCommand;
 use mz_compute_types::dataflows::{BuildDesc, DataflowDescription};
 use mz_ore::cast::CastFrom;
+use mz_timely_util::scope_label::ScopeExt;
 use timely::communication::Allocate;
 use timely::dataflow::channels::pact::Exchange;
 use timely::dataflow::operators::Operator;
 use timely::dataflow::operators::generic::source;
 use timely::scheduling::{Scheduler, SyncActivator};
-use timely::worker::Worker as TimelyWorker;
+use timely::worker::{AsWorker, Worker as TimelyWorker};
 use uuid::Uuid;
 
 /// A sender pushing commands onto the command channel.
@@ -91,6 +92,8 @@ pub fn render<A: Allocate>(timely_worker: &mut TimelyWorker<A>) -> (Sender, Rece
     timely_worker.dataflow_named::<u64, _, _>("command_channel", {
         let activator = Arc::clone(&activator);
         move |scope| {
+            let scope = &mut scope.with_label();
+
             source(scope, "command_channel::source", |cap, info| {
                 let sync_activator = scope.sync_activator_for(info.address.to_vec());
                 *activator.lock().expect("poisoned") = Some(sync_activator);

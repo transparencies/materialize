@@ -2454,6 +2454,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52560adf09603e58c9a7ee1fe1dcb95a16927b17c127f0ac02d6e768a0e25bc1"
 
 [[package]]
+name = "custom-labels"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a750ea4bdb7dbf9584b5d5c668bfa3835f88275781a947b5ea0212945bbdd41f"
+dependencies = [
+ "bindgen",
+ "cc",
+ "libc",
+ "pin-project-lite",
+]
+
+[[package]]
 name = "cxx"
 version = "1.0.122"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6078,6 +6090,7 @@ dependencies = [
  "anyhow",
  "axum",
  "clap",
+ "custom-labels",
  "fail",
  "futures",
  "hyper 1.8.1",
@@ -6902,6 +6915,7 @@ dependencies = [
 name = "mz-materialized"
 version = "26.12.0-dev.0"
 dependencies = [
+ "custom-labels",
  "mz-clusterd",
  "mz-environmentd",
  "workspace-hack",
@@ -8508,6 +8522,7 @@ dependencies = [
  "columnar",
  "columnation",
  "criterion",
+ "custom-labels",
  "differential-dataflow",
  "either",
  "futures-util",

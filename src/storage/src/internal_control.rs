@@ -18,6 +18,7 @@ use mz_storage_types::oneshot_sources::OneshotIngestionRequest;
 use mz_storage_types::parameters::StorageParameters;
 use mz_storage_types::sinks::StorageSinkDesc;
 use mz_storage_types::sources::IngestionDescription;
+use mz_timely_util::scope_label::ScopeExt;
 use serde::{Deserialize, Serialize};
 use timely::communication::Allocate;
 use timely::dataflow::channels::pact::{Exchange, Pipeline};
@@ -25,7 +26,7 @@ use timely::dataflow::operators::generic::source;
 use timely::dataflow::operators::{Broadcast, Operator};
 use timely::progress::Antichain;
 use timely::scheduling::{Activator, Scheduler};
-use timely::worker::Worker as TimelyWorker;
+use timely::worker::{AsWorker, Worker as TimelyWorker};
 
 use crate::statistics::{SinkStatisticsRecord, SourceStatisticsRecord};
 
@@ -174,6 +175,7 @@ pub(crate) fn setup_command_sequencer<'w, A: Allocate>(
     timely_worker.dataflow_named::<(), _, _>("command_sequencer", {
         let activator = Rc::clone(&activator);
         move |scope| {
+            let scope = &mut scope.with_label();
             // Create a stream of commands received from `input_rx`.
             //
             // The output commands are tagged by worker ID and command index, allowing downstream

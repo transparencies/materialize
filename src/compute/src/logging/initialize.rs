@@ -20,6 +20,7 @@ use mz_storage_types::errors::DataflowError;
 use mz_timely_util::columnar::Column;
 use mz_timely_util::columnar::builder::ColumnBuilder;
 use mz_timely_util::operator::CollectionExt;
+use mz_timely_util::scope_label::ScopeExt;
 use timely::ContainerBuilder;
 use timely::communication::Allocate;
 use timely::container::{ContainerBuilder as _, PushInto};
@@ -114,6 +115,8 @@ pub(crate) struct LoggingTraces {
 impl<A: Allocate + 'static> LoggingContext<'_, A> {
     fn construct_dataflow(&mut self) -> BTreeMap<LogVariant, TraceBundle> {
         self.worker.dataflow_named("Dataflow: logging", |scope| {
+            let scope = &mut scope.with_label();
+
             let mut collections = BTreeMap::new();
 
             let super::timely::Return {
@@ -149,7 +152,7 @@ impl<A: Allocate + 'static> LoggingContext<'_, A> {
                 collections: compute_collections,
             } = super::compute::construct(
                 scope.clone(),
-                scope.parent.clone(),
+                scope.parent().clone(),
                 self.config,
                 self.c_event_queue.clone(),
                 Rc::clone(&self.shared_state),
