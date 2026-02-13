@@ -15,6 +15,27 @@ Starting with the v26.1.0 release, Materialize releases on a weekly schedule for
 both Cloud and Self-Managed. See [Release schedule](/releases/schedule) for details.
 {{</ note >}}
 
+## v26.11.0
+*Scheduled for release to Materialize Cloud: 2026-02-19* <br>
+*Released to Materialize Self-Managed: 2026-02-13* <br>
+
+This release includes improvements to Avro Schema references, `EXPLAIN` commands, and bug fixes.
+
+### Improvements
+- **Avro Schema References**: Sources can now use avro schemas which reference
+  other schemas when using Confluent Schema Registry.
+- **`EXPLAIN` improvements**: `EXPLAIN` now allows you to inspect the query plan
+  for `SUBSCRIBE` statements. It also fully qualifies index names if there are
+  identically-named indexes across different schemas.
+- **More efficient dbt-adapter**: We've added indexes on `mz_hydration_statuses` and `mz_materialization_lag`.
+  This should speed up "deployment ready" queries made by our dbt-adapter.
+
+### Bug Fixes
+- Fixed a bug where `IS DISTINCT FROM` could fail typechecking in certain cases
+  involving different data types, causing query errors.
+- Improved the error message when `INSERT INTO ... SELECT` transitively
+  references a source.
+
 ## v26.10.1
 *Released to Materialize Cloud: 2026-02-05* <br>
 *Released to Materialize Self-Managed: 2026-02-06* <br>
