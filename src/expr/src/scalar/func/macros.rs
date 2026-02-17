@@ -242,22 +242,17 @@ macro_rules! derive_binary {
                 &'a self,
                 datums: &[Datum<'a>],
                 temp_storage: &'a RowArena,
-                a: &'a MirScalarExpr,
-                b: &'a MirScalarExpr,
+                exprs: &[&'a MirScalarExpr],
             ) -> Result<Datum<'a>, EvalError> {
                 match self {
-                    $(Self::$name(f) => f.eval(datums, temp_storage, a, b),)*
+                    $(Self::$name(f) => f.eval(datums, temp_storage, exprs),)*
                 }
             }
 
-            pub fn output_type(
-                &self,
-                input_type_a: SqlColumnType,
-                input_type_b: SqlColumnType,
-            ) -> SqlColumnType {
+            pub fn output_type(&self, input_types: &[SqlColumnType]) -> SqlColumnType {
                 match self {
                     $(Self::$name(f) => {
-                        LazyBinaryFunc::output_type(f, input_type_a, input_type_b)
+                        LazyBinaryFunc::output_type(f, input_types)
                     },)*
                 }
             }

@@ -15,22 +15,16 @@ use crate::{EvalError, MirScalarExpr};
 
 /// A description of an SQL binary function that has the ability to lazy evaluate its arguments
 // This trait will eventually be annotated with #[enum_dispatch] to autogenerate the UnaryFunc enum
-#[allow(unused)]
 pub(crate) trait LazyBinaryFunc {
     fn eval<'a>(
         &'a self,
         datums: &[Datum<'a>],
         temp_storage: &'a RowArena,
-        a: &'a MirScalarExpr,
-        b: &'a MirScalarExpr,
+        exprs: &[&'a MirScalarExpr],
     ) -> Result<Datum<'a>, EvalError>;
 
     /// The output SqlColumnType of this function.
-    fn output_type(
-        &self,
-        input_type_a: SqlColumnType,
-        input_type_b: SqlColumnType,
-    ) -> SqlColumnType;
+    fn output_type(&self, input_types: &[SqlColumnType]) -> SqlColumnType;
 
     /// Whether this function will produce NULL on NULL input.
     fn propagates_nulls(&self) -> bool;
@@ -65,30 +59,19 @@ pub(crate) trait LazyBinaryFunc {
     fn is_infix_op(&self) -> bool;
 }
 
-#[allow(unused)]
 pub(crate) trait EagerBinaryFunc {
-    type Input1<'a>: InputDatumType<'a, EvalError>;
-    type Input2<'a>: InputDatumType<'a, EvalError>;
+    type Input<'a>: InputDatumType<'a, EvalError>;
     type Output<'a>: OutputDatumType<'a, EvalError>;
 
-    fn call<'a>(
-        &self,
-        a: Self::Input1<'a>,
-        b: Self::Input2<'a>,
-        temp_storage: &'a RowArena,
-    ) -> Self::Output<'a>;
+    fn call<'a>(&self, input: Self::Input<'a>, temp_storage: &'a RowArena) -> Self::Output<'a>;
 
     /// The output SqlColumnType of this function
-    fn output_type(
-        &self,
-        input_type_a: SqlColumnType,
-        input_type_b: SqlColumnType,
-    ) -> SqlColumnType;
+    fn output_type(&self, input_types: &[SqlColumnType]) -> SqlColumnType;
 
     /// Whether this function will produce NULL on NULL input
     fn propagates_nulls(&self) -> bool {
         // If the inputs are not nullable then nulls are propagated
-        !Self::Input1::nullable() && !Self::Input2::nullable()
+        !Self::Input::nullable()
     }
 
     /// Whether this function will produce NULL on non-NULL input
@@ -121,40 +104,31 @@ impl<T: EagerBinaryFunc> LazyBinaryFunc for T {
         &'a self,
         datums: &[Datum<'a>],
         temp_storage: &'a RowArena,
-        a: &'a MirScalarExpr,
-        b: &'a MirScalarExpr,
+        exprs: &[&'a MirScalarExpr],
     ) -> Result<Datum<'a>, EvalError> {
-        let a = a.eval(datums, temp_storage)?;
-        let b = b.eval(datums, temp_storage)?;
-        let a = match T::Input1::try_from_result(Ok(a)) {
+        let mut datums = exprs
+            .into_iter()
+            .map(|expr| expr.eval(datums, temp_storage));
+        let input = match T::Input::try_from_iter(&mut datums) {
             // If we can convert to the input type then we call the function
             Ok(input) => input,
             // If we can't and we got a non-null datum something went wrong in the planner
-            Err(Ok(datum)) if !datum.is_null() => {
+            Err(Ok(Some(datum))) if !datum.is_null() => {
                 return Err(EvalError::Internal("invalid input type".into()));
             }
-            // Otherwise we just propagate NULLs and errors
-            Err(res) => return res,
-        };
-        let b = match T::Input2::try_from_result(Ok(b)) {
-            // If we can convert to the input type then we call the function
-            Ok(input) => input,
-            // If we can't and we got a non-null datum something went wrong in the planner
-            Err(Ok(datum)) if !datum.is_null() => {
-                return Err(EvalError::Internal("invalid input type".into()));
+            Err(Ok(None)) => {
+                return Err(EvalError::Internal("unexpectedly missing parameter".into()));
             }
             // Otherwise we just propagate NULLs and errors
-            Err(res) => return res,
+            Err(Ok(Some(datum))) => return Ok(datum),
+            Err(Err(res)) => return Err(res),
         };
-        self.call(a, b, temp_storage).into_result(temp_storage)
+        assert_none!(datums.next(), "No leftover input arguments");
+        self.call(input, temp_storage).into_result(temp_storage)
     }
 
-    fn output_type(
-        &self,
-        input_type_a: SqlColumnType,
-        input_type_b: SqlColumnType,
-    ) -> SqlColumnType {
-        self.output_type(input_type_a, input_type_b)
+    fn output_type(&self, input_types: &[SqlColumnType]) -> SqlColumnType {
+        self.output_type(input_types)
     }
 
     fn propagates_nulls(&self) -> bool {
@@ -183,6 +157,7 @@ impl<T: EagerBinaryFunc> LazyBinaryFunc for T {
 }
 
 pub use derive::BinaryFunc;
+use mz_ore::assert_none;
 
 mod derive {
     use std::fmt;
@@ -451,89 +426,89 @@ mod test {
     #[mz_ore::test]
     fn output_types_infallible() {
         assert_eq!(
-            Infallible1.output_type(
+            Infallible1.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Infallible1.output_type(
+            Infallible1.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Infallible1.output_type(
+            Infallible1.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Infallible1.output_type(
+            Infallible1.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(false)
         );
 
         assert_eq!(
-            Infallible2.output_type(
+            Infallible2.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(false)
         );
         assert_eq!(
-            Infallible2.output_type(
+            Infallible2.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(false)
         );
         assert_eq!(
-            Infallible2.output_type(
+            Infallible2.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(false)
         );
         assert_eq!(
-            Infallible2.output_type(
+            Infallible2.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(false)
         );
 
         assert_eq!(
-            Infallible3.output_type(
+            Infallible3.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Infallible3.output_type(
+            Infallible3.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Infallible3.output_type(
+            Infallible3.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Infallible3.output_type(
+            Infallible3.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
     }
@@ -571,89 +546,89 @@ mod test {
     #[mz_ore::test]
     fn output_types_fallible() {
         assert_eq!(
-            Fallible1.output_type(
+            Fallible1.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Fallible1.output_type(
+            Fallible1.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Fallible1.output_type(
+            Fallible1.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Fallible1.output_type(
+            Fallible1.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(false)
         );
 
         assert_eq!(
-            Fallible2.output_type(
+            Fallible2.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(false)
         );
         assert_eq!(
-            Fallible2.output_type(
+            Fallible2.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(false)
         );
         assert_eq!(
-            Fallible2.output_type(
+            Fallible2.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(false)
         );
         assert_eq!(
-            Fallible2.output_type(
+            Fallible2.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(false)
         );
 
         assert_eq!(
-            Fallible3.output_type(
+            Fallible3.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Fallible3.output_type(
+            Fallible3.output_type(&[
                 SqlScalarType::Float32.nullable(true),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Fallible3.output_type(
+            Fallible3.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(true)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
         assert_eq!(
-            Fallible3.output_type(
+            Fallible3.output_type(&[
                 SqlScalarType::Float32.nullable(false),
                 SqlScalarType::Float32.nullable(false)
-            ),
+            ]),
             SqlScalarType::Float32.nullable(true)
         );
     }

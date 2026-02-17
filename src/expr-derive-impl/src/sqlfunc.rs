@@ -490,14 +490,12 @@ fn binary_func(
         pub struct #struct_name;
 
         impl crate::func::binary::EagerBinaryFunc for #struct_name {
-            type Input1<'a> = #input1_ty;
-            type Input2<'a> = #input2_ty;
+            type Input<'a> = (#input1_ty, #input2_ty);
             type Output<'a> = #output_ty;
 
             fn call<'a>(
                 &self,
-                a: Self::Input1<'a>,
-                b: Self::Input2<'a>,
+                (a, b): Self::Input<'a>,
                 temp_storage: &'a mz_repr::RowArena
             ) -> Self::Output<'a> {
                 #fn_name(a, b #arena)
@@ -505,8 +503,7 @@ fn binary_func(
 
             fn output_type(
                 &self,
-                input_type_a: mz_repr::SqlColumnType,
-                input_type_b: mz_repr::SqlColumnType,
+                input_types: &[mz_repr::SqlColumnType],
             ) -> mz_repr::SqlColumnType {
                 use mz_repr::AsColumnType;
                 let output = #output_type;
@@ -516,9 +513,8 @@ fn binary_func(
                 // The output is nullable if it is nullable by itself
                 // or the input is nullable and this function
                 // propagates nulls
-                let is_null = nullable
-                    || (propagates_nulls
-                        && (input_type_a.nullable || input_type_b.nullable));
+                let inputs_nullable = input_types.iter().any(|it| it.nullable);
+                let is_null = nullable || (propagates_nulls && inputs_nullable);
                 output.nullable(is_null)
             }
 

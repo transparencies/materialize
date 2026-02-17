@@ -315,17 +315,11 @@ pub struct ListLengthMax {
     pub max_layer: usize,
 }
 impl EagerBinaryFunc for ListLengthMax {
-    type Input1<'a> = DatumList<'a>;
-    type Input2<'a> = i64;
+    type Input<'a> = (DatumList<'a>, i64);
     type Output<'a> = Result<Option<i32>, EvalError>;
     // TODO(benesch): remove potentially dangerous usage of `as`.
     #[allow(clippy::as_conversions)]
-    fn call<'a>(
-        &self,
-        a: Self::Input1<'a>,
-        b: Self::Input2<'a>,
-        _: &'a RowArena,
-    ) -> Self::Output<'a> {
+    fn call<'a>(&self, (a, b): Self::Input<'a>, _: &'a RowArena) -> Self::Output<'a> {
         fn max_len_on_layer(i: DatumList<'_>, on_layer: i64) -> Option<usize> {
             let mut i = i.iter();
             if on_layer > 1 {
@@ -353,17 +347,12 @@ impl EagerBinaryFunc for ListLengthMax {
             }
         }
     }
-    fn output_type(
-        &self,
-        input_type_a: SqlColumnType,
-        input_type_b: SqlColumnType,
-    ) -> SqlColumnType {
+    fn output_type(&self, input_types: &[SqlColumnType]) -> SqlColumnType {
         let output = Self::Output::as_column_type();
         let propagates_nulls = self.propagates_nulls();
         let nullable = output.nullable;
-        output.nullable(
-            nullable || (propagates_nulls && (input_type_a.nullable || input_type_b.nullable)),
-        )
+        let input_nullable = input_types.iter().any(|t| t.nullable);
+        output.nullable(nullable || (propagates_nulls && input_nullable))
     }
 }
 impl fmt::Display for ListLengthMax {
