@@ -319,11 +319,11 @@ fn unary_func(func: &syn::ItemFn, modifiers: Modifiers) -> darling::Result<Token
         )]
         pub struct #struct_name;
 
-        impl<'a> crate::func::EagerUnaryFunc<'a> for #struct_name {
-            type Input = #input_ty;
-            type Output = #output_ty;
+        impl crate::func::EagerUnaryFunc for #struct_name {
+            type Input<'a> = #input_ty;
+            type Output<'a> = #output_ty;
 
-            fn call(&self, a: Self::Input) -> Self::Output {
+            fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
                 #fn_name(a)
             }
 

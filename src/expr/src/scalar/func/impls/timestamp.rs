@@ -88,14 +88,11 @@ pub struct CastTimestampToTimestampTz {
     pub to: Option<TimestampPrecision>,
 }
 
-impl<'a> EagerUnaryFunc<'a> for CastTimestampToTimestampTz {
-    type Input = CheckedTimestamp<NaiveDateTime>;
-    type Output = Result<CheckedTimestamp<DateTime<Utc>>, EvalError>;
+impl EagerUnaryFunc for CastTimestampToTimestampTz {
+    type Input<'a> = CheckedTimestamp<NaiveDateTime>;
+    type Output<'a> = Result<CheckedTimestamp<DateTime<Utc>>, EvalError>;
 
-    fn call(
-        &self,
-        a: CheckedTimestamp<NaiveDateTime>,
-    ) -> Result<CheckedTimestamp<DateTime<Utc>>, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         let out =
             CheckedTimestamp::try_from(DateTime::<Utc>::from_naive_utc_and_offset(a.into(), Utc))?;
         let updated = out.round_to_precision(self.to)?;
@@ -148,14 +145,11 @@ pub struct AdjustTimestampPrecision {
     pub to: Option<TimestampPrecision>,
 }
 
-impl<'a> EagerUnaryFunc<'a> for AdjustTimestampPrecision {
-    type Input = CheckedTimestamp<NaiveDateTime>;
-    type Output = Result<CheckedTimestamp<NaiveDateTime>, EvalError>;
+impl EagerUnaryFunc for AdjustTimestampPrecision {
+    type Input<'a> = CheckedTimestamp<NaiveDateTime>;
+    type Output<'a> = Result<CheckedTimestamp<NaiveDateTime>, EvalError>;
 
-    fn call(
-        &self,
-        a: CheckedTimestamp<NaiveDateTime>,
-    ) -> Result<CheckedTimestamp<NaiveDateTime>, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         // This should never have been called if precisions are same.
         // Adding a soft-assert to flag if there are such instances.
         mz_ore::soft_assert_no_log!(self.to != self.from);
@@ -207,14 +201,11 @@ pub struct CastTimestampTzToTimestamp {
     pub to: Option<TimestampPrecision>,
 }
 
-impl<'a> EagerUnaryFunc<'a> for CastTimestampTzToTimestamp {
-    type Input = CheckedTimestamp<DateTime<Utc>>;
-    type Output = Result<CheckedTimestamp<NaiveDateTime>, EvalError>;
+impl EagerUnaryFunc for CastTimestampTzToTimestamp {
+    type Input<'a> = CheckedTimestamp<DateTime<Utc>>;
+    type Output<'a> = Result<CheckedTimestamp<NaiveDateTime>, EvalError>;
 
-    fn call(
-        &self,
-        a: CheckedTimestamp<DateTime<Utc>>,
-    ) -> Result<CheckedTimestamp<NaiveDateTime>, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         let out = CheckedTimestamp::try_from(a.naive_utc())?;
         let updated = out.round_to_precision(self.to)?;
         Ok(updated)
@@ -266,14 +257,11 @@ pub struct AdjustTimestampTzPrecision {
     pub to: Option<TimestampPrecision>,
 }
 
-impl<'a> EagerUnaryFunc<'a> for AdjustTimestampTzPrecision {
-    type Input = CheckedTimestamp<DateTime<Utc>>;
-    type Output = Result<CheckedTimestamp<DateTime<Utc>>, EvalError>;
+impl EagerUnaryFunc for AdjustTimestampTzPrecision {
+    type Input<'a> = CheckedTimestamp<DateTime<Utc>>;
+    type Output<'a> = Result<CheckedTimestamp<DateTime<Utc>>, EvalError>;
 
-    fn call(
-        &self,
-        a: CheckedTimestamp<DateTime<Utc>>,
-    ) -> Result<CheckedTimestamp<DateTime<Utc>>, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         // This should never have been called if precisions are same.
         // Adding a soft-assert to flag if there are such instances.
         mz_ore::soft_assert_no_log!(self.to != self.from);
@@ -367,11 +355,11 @@ where
 )]
 pub struct ExtractInterval(pub DateTimeUnits);
 
-impl<'a> EagerUnaryFunc<'a> for ExtractInterval {
-    type Input = Interval;
-    type Output = Result<Numeric, EvalError>;
+impl EagerUnaryFunc for ExtractInterval {
+    type Input<'a> = Interval;
+    type Output<'a> = Result<Numeric, EvalError>;
 
-    fn call(&self, a: Interval) -> Result<Numeric, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         date_part_interval_inner(self.0, a)
     }
 
@@ -400,11 +388,11 @@ impl fmt::Display for ExtractInterval {
 )]
 pub struct DatePartInterval(pub DateTimeUnits);
 
-impl<'a> EagerUnaryFunc<'a> for DatePartInterval {
-    type Input = Interval;
-    type Output = Result<f64, EvalError>;
+impl EagerUnaryFunc for DatePartInterval {
+    type Input<'a> = Interval;
+    type Output<'a> = Result<f64, EvalError>;
 
-    fn call(&self, a: Interval) -> Result<f64, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         date_part_interval_inner(self.0, a)
     }
 
@@ -479,11 +467,11 @@ pub(crate) fn most_significant_unit(unit: DateTimeUnits) -> bool {
 )]
 pub struct ExtractTimestamp(pub DateTimeUnits);
 
-impl<'a> EagerUnaryFunc<'a> for ExtractTimestamp {
-    type Input = CheckedTimestamp<NaiveDateTime>;
-    type Output = Result<Numeric, EvalError>;
+impl EagerUnaryFunc for ExtractTimestamp {
+    type Input<'a> = CheckedTimestamp<NaiveDateTime>;
+    type Output<'a> = Result<Numeric, EvalError>;
 
-    fn call(&self, a: CheckedTimestamp<NaiveDateTime>) -> Result<Numeric, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         date_part_timestamp_inner(self.0, &*a)
     }
 
@@ -516,11 +504,11 @@ impl fmt::Display for ExtractTimestamp {
 )]
 pub struct ExtractTimestampTz(pub DateTimeUnits);
 
-impl<'a> EagerUnaryFunc<'a> for ExtractTimestampTz {
-    type Input = CheckedTimestamp<DateTime<Utc>>;
-    type Output = Result<Numeric, EvalError>;
+impl EagerUnaryFunc for ExtractTimestampTz {
+    type Input<'a> = CheckedTimestamp<DateTime<Utc>>;
+    type Output<'a> = Result<Numeric, EvalError>;
 
-    fn call(&self, a: CheckedTimestamp<DateTime<Utc>>) -> Result<Numeric, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         date_part_timestamp_inner(self.0, &*a)
     }
 
@@ -556,11 +544,11 @@ impl fmt::Display for ExtractTimestampTz {
 )]
 pub struct DatePartTimestamp(pub DateTimeUnits);
 
-impl<'a> EagerUnaryFunc<'a> for DatePartTimestamp {
-    type Input = CheckedTimestamp<NaiveDateTime>;
-    type Output = Result<f64, EvalError>;
+impl EagerUnaryFunc for DatePartTimestamp {
+    type Input<'a> = CheckedTimestamp<NaiveDateTime>;
+    type Output<'a> = Result<f64, EvalError>;
 
-    fn call(&self, a: CheckedTimestamp<NaiveDateTime>) -> Result<f64, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         date_part_timestamp_inner(self.0, &*a)
     }
 
@@ -589,11 +577,11 @@ impl fmt::Display for DatePartTimestamp {
 )]
 pub struct DatePartTimestampTz(pub DateTimeUnits);
 
-impl<'a> EagerUnaryFunc<'a> for DatePartTimestampTz {
-    type Input = CheckedTimestamp<DateTime<Utc>>;
-    type Output = Result<f64, EvalError>;
+impl EagerUnaryFunc for DatePartTimestampTz {
+    type Input<'a> = CheckedTimestamp<DateTime<Utc>>;
+    type Output<'a> = Result<f64, EvalError>;
 
-    fn call(&self, a: CheckedTimestamp<DateTime<Utc>>) -> Result<f64, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         date_part_timestamp_inner(self.0, &*a)
     }
 
@@ -651,14 +639,11 @@ pub fn date_trunc_inner<T: TimestampLike>(units: DateTimeUnits, ts: &T) -> Resul
 )]
 pub struct DateTruncTimestamp(pub DateTimeUnits);
 
-impl<'a> EagerUnaryFunc<'a> for DateTruncTimestamp {
-    type Input = CheckedTimestamp<NaiveDateTime>;
-    type Output = Result<CheckedTimestamp<NaiveDateTime>, EvalError>;
+impl EagerUnaryFunc for DateTruncTimestamp {
+    type Input<'a> = CheckedTimestamp<NaiveDateTime>;
+    type Output<'a> = Result<CheckedTimestamp<NaiveDateTime>, EvalError>;
 
-    fn call(
-        &self,
-        a: CheckedTimestamp<NaiveDateTime>,
-    ) -> Result<CheckedTimestamp<NaiveDateTime>, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         date_trunc_inner(self.0, &*a)?.try_into().err_into()
     }
 
@@ -691,14 +676,11 @@ impl fmt::Display for DateTruncTimestamp {
 )]
 pub struct DateTruncTimestampTz(pub DateTimeUnits);
 
-impl<'a> EagerUnaryFunc<'a> for DateTruncTimestampTz {
-    type Input = CheckedTimestamp<DateTime<Utc>>;
-    type Output = Result<CheckedTimestamp<DateTime<Utc>>, EvalError>;
+impl EagerUnaryFunc for DateTruncTimestampTz {
+    type Input<'a> = CheckedTimestamp<DateTime<Utc>>;
+    type Output<'a> = Result<CheckedTimestamp<DateTime<Utc>>, EvalError>;
 
-    fn call(
-        &self,
-        a: CheckedTimestamp<DateTime<Utc>>,
-    ) -> Result<CheckedTimestamp<DateTime<Utc>>, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         date_trunc_inner(self.0, &*a)?.try_into().err_into()
     }
 
@@ -787,14 +769,11 @@ fn checked_add_with_leapsecond(lhs: &NaiveDateTime, rhs: &FixedOffset) -> Option
 )]
 pub struct TimezoneTimestamp(pub Timezone);
 
-impl<'a> EagerUnaryFunc<'a> for TimezoneTimestamp {
-    type Input = CheckedTimestamp<NaiveDateTime>;
-    type Output = Result<CheckedTimestamp<DateTime<Utc>>, EvalError>;
+impl EagerUnaryFunc for TimezoneTimestamp {
+    type Input<'a> = CheckedTimestamp<NaiveDateTime>;
+    type Output<'a> = Result<CheckedTimestamp<DateTime<Utc>>, EvalError>;
 
-    fn call(
-        &self,
-        a: CheckedTimestamp<NaiveDateTime>,
-    ) -> Result<CheckedTimestamp<DateTime<Utc>>, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         timezone_timestamp(self.0, a.to_naive())
     }
 
@@ -823,14 +802,11 @@ impl fmt::Display for TimezoneTimestamp {
 )]
 pub struct TimezoneTimestampTz(pub Timezone);
 
-impl<'a> EagerUnaryFunc<'a> for TimezoneTimestampTz {
-    type Input = CheckedTimestamp<DateTime<Utc>>;
-    type Output = Result<CheckedTimestamp<NaiveDateTime>, EvalError>;
+impl EagerUnaryFunc for TimezoneTimestampTz {
+    type Input<'a> = CheckedTimestamp<DateTime<Utc>>;
+    type Output<'a> = Result<CheckedTimestamp<NaiveDateTime>, EvalError>;
 
-    fn call(
-        &self,
-        a: CheckedTimestamp<DateTime<Utc>>,
-    ) -> Result<CheckedTimestamp<NaiveDateTime>, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         timezone_timestamptz(self.0, a.into())?
             .try_into()
             .err_into()
@@ -864,11 +840,11 @@ pub struct ToCharTimestamp {
     pub format: DateTimeFormat,
 }
 
-impl<'a> EagerUnaryFunc<'a> for ToCharTimestamp {
-    type Input = CheckedTimestamp<NaiveDateTime>;
-    type Output = String;
+impl EagerUnaryFunc for ToCharTimestamp {
+    type Input<'a> = CheckedTimestamp<NaiveDateTime>;
+    type Output<'a> = String;
 
-    fn call(&self, input: CheckedTimestamp<NaiveDateTime>) -> String {
+    fn call<'a>(&self, input: Self::Input<'a>) -> Self::Output<'a> {
         self.format.render(&*input)
     }
 
@@ -900,11 +876,11 @@ pub struct ToCharTimestampTz {
     pub format: DateTimeFormat,
 }
 
-impl<'a> EagerUnaryFunc<'a> for ToCharTimestampTz {
-    type Input = CheckedTimestamp<DateTime<Utc>>;
-    type Output = String;
+impl EagerUnaryFunc for ToCharTimestampTz {
+    type Input<'a> = CheckedTimestamp<DateTime<Utc>>;
+    type Output<'a> = String;
 
-    fn call(&self, input: CheckedTimestamp<DateTime<Utc>>) -> String {
+    fn call<'a>(&self, input: Self::Input<'a>) -> Self::Output<'a> {
         self.format.render(&*input)
     }
 

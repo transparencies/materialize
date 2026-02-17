@@ -100,11 +100,11 @@ fn cast_jsonb_to_float64<'a>(a: JsonbRef<'a>) -> Result<f64, EvalError> {
 )]
 pub struct CastJsonbToNumeric(pub Option<NumericMaxScale>);
 
-impl<'a> EagerUnaryFunc<'a> for CastJsonbToNumeric {
-    type Input = JsonbRef<'a>;
-    type Output = Result<Numeric, EvalError>;
+impl EagerUnaryFunc for CastJsonbToNumeric {
+    type Input<'a> = JsonbRef<'a>;
+    type Output<'a> = Result<Numeric, EvalError>;
 
-    fn call(&self, a: JsonbRef<'a>) -> Result<Numeric, EvalError> {
+    fn call<'a>(&self, a: Self::Input<'a>) -> Self::Output<'a> {
         match a.into_datum() {
             Datum::Numeric(mut num) => match self.0 {
                 None => Ok(num.into_inner()),
