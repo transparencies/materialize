@@ -15,8 +15,41 @@ Starting with the v26.1.0 release, Materialize releases on a weekly schedule for
 both Cloud and Self-Managed. See [Release schedule](/releases/schedule) for details.
 {{</ note >}}
 
+## v26.12.0
+*Released to Materialize Cloud: 2026-02-19* <br>
+*Released to Materialize Self-Managed: 2026-02-20* <br>
+
+This release introduces our Roles and Users page, performance improvements, and bugfixes.
+
+### Role Management
+The new Roles and Users page on the Materialize Console allows organization administrators to create roles, grant privileges, and assign roles to users. You can also track the hierarchy of roles using the graph view.
+
+![Create Role experience](/images/releases/v2612_create_role.png)
+
+![Graph View experience](/images/releases/v2612_graph_view.png)
+
+You can navigate to the Roles and Users page directly from the Materialize console. If you're on Materialize Self-Managed, upgrade to v26.12 first. If you're on Materialize Cloud, you can go directly to https://console.materialize.com/roles to reach the page.
+
+### Improvements
+- **Updated default resource requirements** (<red>*Materialize Self-Managed only*</red>): We've updated the Materialize Self-Managed Helm charts to ensure correct operation on Kind clusters
+- **Improved console query history performance**: We've optimized RBAC queries to use OIDs instead of names, resulting in 2-3x faster page execution.
+
+### Bug Fixes
+- Fixed a panic when using unsupported types (e.g., float) with range
+  expressions, now returning a proper error message instead of an internal error.
+- Fixed a panic when using empty `int2vector` values, which could cause internal
+  errors during query optimization or execution.
+- Fixed internal errors that could occur during query optimization due to type
+  checking mismatches in `ColumnKnowledge` and related transforms, adding
+  fallback handling to prevent crashes.
+- Fixed compatibility with older Amazon Aurora PostgreSQL versions when using
+  parallel snapshots, by using `SELECT current_setting()` instead of `SHOW` for
+  version retrieval.
+- Fixed version comparison in the Materialize Kubernetes operator to correctly
+  follow semver precedence rules, no longer rejecting upgrades that differ only in build metadata.
+
 ## v26.11.0
-*Scheduled for release to Materialize Cloud: 2026-02-19* <br>
+*Released to Materialize Cloud: 2026-02-19* <br>
 *Released to Materialize Self-Managed: 2026-02-13* <br>
 
 This release includes improvements to Avro Schema references, `EXPLAIN` commands, and bug fixes.
