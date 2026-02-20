@@ -2099,8 +2099,33 @@ macro_rules! impl_tuple_input_datum_type {
             fn try_from_iter(
                 iter: &mut impl Iterator<Item = Result<Datum<'a>, E>>,
             ) -> Result<Self, Result<Option<Datum<'a>>, E>> {
+                // Eagerly evaluate all arguments before checking for errors.
+                // Each `$T` repetition expands to a separate variable, so we
+                // first collect all results and then unpack them in priority
+                // order: internal errors, then eval errors, then null
+                // propagation. Doing it in one pass per `$T` would short-
+                // circuit on the first error and skip evaluating later args.
                 $(
-                    let $T = <$T>::try_from_iter(iter)?;
+                    let $T = <$T>::try_from_iter(iter);
+                )+
+                // Handle internal errors
+                $(
+                    let $T = match $T {
+                        Err(Ok(None)) => return Err(Ok(None)),
+                        Err(Ok(Some(datum))) if !datum.is_null() => return Err(Ok(Some(datum))),
+                        els => els,
+                    };
+                )+
+                // Handle eval errors
+                $(
+                    let $T = match $T {
+                        Err(Err(err)) => return Err(Err(err)),
+                        els => els,
+                    };
+                )+
+                // Handle null propagation
+                $(
+                    let $T = $T?;
                 )+
                 Ok(($($T,)+))
             }
