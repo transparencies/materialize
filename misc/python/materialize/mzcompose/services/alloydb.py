@@ -16,7 +16,6 @@ from materialize import MZ_ROOT
 from materialize.mzcompose import loader
 from materialize.mzcompose.service import (
     Service,
-    ServiceConfig,
 )
 from materialize.mzcompose.services.minio import minio_blob_uri
 
@@ -24,81 +23,63 @@ if TYPE_CHECKING:
     from materialize.mzcompose.composition import Composition
 
 
-class Postgres(Service):
+class AlloyDB(Service):
     def __init__(
         self,
-        name: str = "postgres",
-        mzbuild: str = "postgres",
-        image: str | None = None,
-        ports: list[str] = ["5432"],
-        extra_command: list[str] = [],
-        environment: list[str] = [
-            "POSTGRESDB=postgres",
-            "POSTGRES_PASSWORD=postgres",
-            "LD_PRELOAD=libeatmydata.so",
-        ],
-        volumes: list[str] = [],
-        max_wal_senders: int = 100,
-        max_replication_slots: int = 100,
-        setup_materialize: bool = False,
+        name: str = "alloydb",
+        image: str = "google/alloydbomni:latest",
         restart: str = "no",
     ) -> None:
-        command: list[str] = [
+        path = os.path.relpath(
+            MZ_ROOT / "misc" / "alloydb" / "setup_materialize.sql",
+            loader.composition_path,
+        )
+        volumes = [f"{path}:/docker-entrypoint-initdb.d/setup_materialize.sql"]
+
+        command = [
             "postgres",
             "-c",
-            "wal_level=logical",
+            "fsync=off",
             "-c",
-            f"max_wal_senders={max_wal_senders}",
+            "synchronous_commit=off",
             "-c",
-            f"max_replication_slots={max_replication_slots}",
+            "full_page_writes=off",
+            "-c",
+            "wal_level=minimal",
+            "-c",
+            "max_wal_senders=0",
             "-c",
             "max_connections=5000",
-        ] + extra_command
+        ]
 
-        if setup_materialize:
-            path = os.path.relpath(
-                MZ_ROOT / "misc" / "postgres" / "setup_materialize.sql",
-                loader.composition_path,
-            )
-            volumes = volumes + [
-                f"{path}:/docker-entrypoint-initdb.d/z_setup_materialize.sql"
-            ]
-
-            environment = environment + ["PGPORT=26257"]
-
-        config: ServiceConfig = {"image": image} if image else {"mzbuild": mzbuild}
-
-        config.update(
-            {
+        super().__init__(
+            name=name,
+            config={
+                "image": image,
                 "command": command,
-                "allow_host_ports": True,
-                "ports": ports,
-                "environment": environment,
+                "ports": [26257],
+                "environment": [
+                    "POSTGRES_PASSWORD=postgres",
+                    "POSTGRES_HOST_AUTH_METHOD=trust",
+                    "PGPORT=26257",
+                ],
+                "volumes": volumes,
                 "healthcheck": {
-                    "test": ["CMD", "pg_isready"],
+                    "test": [
+                        "CMD-SHELL",
+                        "psql -U root -d root -p 26257 -c 'SELECT 1' >/dev/null 2>&1",
+                    ],
                     "interval": "1s",
                     "start_period": "30s",
                 },
                 "restart": restart,
-                "volumes": volumes,
-            }
-        )
-        super().__init__(name=name, config=config)
-
-
-class PostgresMetadata(Postgres):
-    def __init__(self, restart: str = "no") -> None:
-        super().__init__(
-            name="postgres-metadata",
-            setup_materialize=True,
-            ports=["26257"],
-            restart=restart,
+            },
         )
 
     @staticmethod
     def backup(c: Composition) -> None:
         backup = c.exec(
-            "postgres-metadata",
+            "alloydb",
             "pg_dumpall",
             "--user",
             "postgres",
@@ -112,13 +93,13 @@ class PostgresMetadata(Postgres):
         c: Composition, mz_service: str = "materialized", restart_mz: bool = True
     ) -> None:
         c.kill(mz_service)
-        c.kill("postgres-metadata")
-        c.rm("postgres-metadata")
-        c.up("postgres-metadata")
+        c.kill("alloydb")
+        c.rm("alloydb")
+        c.up("alloydb")
         with open("backup.sql") as f:
             backup = f.read()
         c.exec(
-            "postgres-metadata",
+            "alloydb",
             "psql",
             "--user",
             "postgres",
@@ -136,7 +117,7 @@ class PostgresMetadata(Postgres):
             "--commit",
             "restore-blob",
             f"--blob-uri={minio_blob_uri()}",
-            "--consensus-uri=postgres://root@postgres-metadata:26257?options=--search_path=consensus",
+            "--consensus-uri=postgres://root@alloydb:26257?options=--search_path=consensus",
         )
         if restart_mz:
             c.up(mz_service)
