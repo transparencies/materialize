@@ -15,6 +15,7 @@
 
 use std::borrow::Cow;
 use std::cmp;
+use std::fmt;
 
 use chrono::NaiveDate;
 use fallible_iterator::FallibleIterator;
@@ -45,6 +46,26 @@ use crate::func::{
 };
 use crate::{EvalError, MirScalarExpr};
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct And;
+
+impl fmt::Display for And {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("AND")
+    }
+}
+
 pub fn and<'a>(
     datums: &[Datum<'a>],
     temp_storage: &'a RowArena,
@@ -67,6 +88,28 @@ pub fn and<'a>(
         (Some(err), _) => Err(err),
         (None, true) => Ok(Datum::Null),
         (None, false) => Ok(Datum::True),
+    }
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct ArrayCreate {
+    pub elem_type: SqlScalarType,
+}
+
+impl fmt::Display for ArrayCreate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("array_create")
     }
 }
 
@@ -134,6 +177,28 @@ fn array_create_multidim<'a>(
     let datum =
         temp_storage.try_make_datum(move |packer| packer.try_push_array(&dims, elements))?;
     Ok(datum)
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct ArrayFill {
+    pub elem_type: SqlScalarType,
+}
+
+impl fmt::Display for ArrayFill {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("array_fill")
+    }
 }
 
 fn array_fill<'a>(
@@ -229,6 +294,27 @@ fn array_fill<'a>(
     })?)
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct ArrayIndex {
+    pub offset: i64,
+}
+impl fmt::Display for ArrayIndex {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("array_index")
+    }
+}
+
 fn array_index<'a>(datums: &[Datum<'a>], offset: i64) -> Datum<'a> {
     mz_ore::soft_assert_no_log!(offset == 0 || offset == 1, "offset must be either 0 or 1");
 
@@ -270,6 +356,26 @@ fn array_index<'a>(datums: &[Datum<'a>], offset: i64) -> Datum<'a> {
         .unwrap_or(Datum::Null)
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct ArrayPosition;
+
+impl fmt::Display for ArrayPosition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("array_position")
+    }
+}
+
 fn array_position<'a>(datums: &[Datum<'a>]) -> Result<Datum<'a>, EvalError> {
     let array = match datums[0] {
         Datum::Null => return Ok(Datum::Null),
@@ -299,6 +405,28 @@ fn array_position<'a>(datums: &[Datum<'a>]) -> Result<Datum<'a>, EvalError> {
         // Adjust count for the amount we skipped, plus 1 for adjustng to PG indexing scheme.
         i32::try_from(p + skip + 1).expect("fewer than i32::MAX elements in array")
     })))
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct ArrayToString {
+    pub elem_type: SqlScalarType,
+}
+
+impl fmt::Display for ArrayToString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("array_to_string")
+    }
 }
 
 // WARNING: This function has potential OOM risk!
@@ -338,6 +466,26 @@ fn array_to_string<'a>(
     Ok(Datum::String(temp_storage.push_string(out)))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct Coalesce;
+
+impl fmt::Display for Coalesce {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("coalesce")
+    }
+}
+
 fn coalesce<'a>(
     datums: &[Datum<'a>],
     temp_storage: &'a RowArena,
@@ -350,6 +498,36 @@ fn coalesce<'a>(
         }
     }
     Ok(Datum::Null)
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct RangeCreate {
+    pub elem_type: SqlScalarType,
+}
+
+impl fmt::Display for RangeCreate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(match &self.elem_type {
+            SqlScalarType::Int32 => "int4range",
+            SqlScalarType::Int64 => "int8range",
+            SqlScalarType::Date => "daterange",
+            SqlScalarType::Numeric { .. } => "numrange",
+            SqlScalarType::Timestamp { .. } => "tsrange",
+            SqlScalarType::TimestampTz { .. } => "tstzrange",
+            _ => unreachable!(),
+        })
+    }
 }
 
 fn create_range<'a>(
@@ -379,6 +557,26 @@ fn create_range<'a>(
     }))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct DateDiffDate;
+
+impl fmt::Display for DateDiffDate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("datediff")
+    }
+}
+
 fn date_diff_date<'a>(unit: Datum, a: Datum, b: Datum) -> Result<Datum<'a>, EvalError> {
     let unit = unit.unwrap_str();
     let unit = unit
@@ -394,6 +592,26 @@ fn date_diff_date<'a>(unit: Datum, a: Datum, b: Datum) -> Result<Datum<'a>, Eval
     let diff = b_ts.diff_as(&a_ts, unit)?;
 
     Ok(Datum::Int64(diff))
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct DateDiffTime;
+
+impl fmt::Display for DateDiffTime {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("datediff")
+    }
 }
 
 fn date_diff_time<'a>(unit: Datum, a: Datum, b: Datum) -> Result<Datum<'a>, EvalError> {
@@ -415,6 +633,26 @@ fn date_diff_time<'a>(unit: Datum, a: Datum, b: Datum) -> Result<Datum<'a>, Eval
     Ok(Datum::Int64(diff))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct DateDiffTimestamp;
+
+impl fmt::Display for DateDiffTimestamp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("datediff")
+    }
+}
+
 fn date_diff_timestamp<'a>(unit: Datum, a: Datum, b: Datum) -> Result<Datum<'a>, EvalError> {
     let unit = unit.unwrap_str();
     let unit = unit
@@ -428,6 +666,26 @@ fn date_diff_timestamp<'a>(unit: Datum, a: Datum, b: Datum) -> Result<Datum<'a>,
     Ok(Datum::Int64(diff))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct DateDiffTimestampTz;
+
+impl fmt::Display for DateDiffTimestampTz {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("datediff")
+    }
+}
+
 fn date_diff_timestamptz<'a>(unit: Datum, a: Datum, b: Datum) -> Result<Datum<'a>, EvalError> {
     let unit = unit.unwrap_str();
     let unit = unit
@@ -439,6 +697,26 @@ fn date_diff_timestamptz<'a>(unit: Datum, a: Datum, b: Datum) -> Result<Datum<'a
     let diff = b.diff_as(&a, unit)?;
 
     Ok(Datum::Int64(diff))
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct ErrorIfNull;
+
+impl fmt::Display for ErrorIfNull {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("error_if_null")
+    }
 }
 
 fn error_if_null<'a>(
@@ -463,6 +741,26 @@ fn error_if_null<'a>(
     }
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct Greatest;
+
+impl fmt::Display for Greatest {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("greatest")
+    }
+}
+
 fn greatest<'a>(
     datums: &[Datum<'a>],
     temp_storage: &'a RowArena,
@@ -475,6 +773,26 @@ fn greatest<'a>(
         .unwrap_or(Datum::Null))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct HmacString;
+
+impl fmt::Display for HmacString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("hmac")
+    }
+}
+
 pub fn hmac_string<'a>(
     datums: &[Datum<'a>],
     temp_storage: &'a RowArena,
@@ -483,6 +801,26 @@ pub fn hmac_string<'a>(
     let key = datums[1].unwrap_str().as_bytes();
     let typ = datums[2].unwrap_str();
     hmac_inner(to_digest, key, typ, temp_storage)
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct HmacBytes;
+
+impl fmt::Display for HmacBytes {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("hmac")
+    }
 }
 
 pub fn hmac_bytes<'a>(
@@ -537,6 +875,26 @@ pub fn hmac_inner<'a>(
     Ok(Datum::Bytes(temp_storage.push_bytes(bytes)))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct JsonbBuildArray;
+
+impl fmt::Display for JsonbBuildArray {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("jsonb_build_array")
+    }
+}
+
 fn jsonb_build_array<'a>(datums: &[Datum<'a>], temp_storage: &'a RowArena) -> Datum<'a> {
     temp_storage.make_datum(|packer| {
         packer.push_list(datums.into_iter().map(|d| match d {
@@ -544,6 +902,26 @@ fn jsonb_build_array<'a>(datums: &[Datum<'a>], temp_storage: &'a RowArena) -> Da
             d => *d,
         }))
     })
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct JsonbBuildObject;
+
+impl fmt::Display for JsonbBuildObject {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("jsonb_build_object")
+    }
 }
 
 fn jsonb_build_object<'a>(
@@ -572,6 +950,26 @@ fn jsonb_build_object<'a>(
     })
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct Least;
+
+impl fmt::Display for Least {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("least")
+    }
+}
+
 fn least<'a>(
     datums: &[Datum<'a>],
     temp_storage: &'a RowArena,
@@ -584,10 +982,73 @@ fn least<'a>(
         .unwrap_or(Datum::Null))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct ListCreate {
+    pub elem_type: SqlScalarType,
+}
+
+impl fmt::Display for ListCreate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("list_create")
+    }
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct RecordCreate {
+    pub field_names: Vec<ColumnName>,
+}
+
+impl fmt::Display for RecordCreate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("record_create")
+    }
+}
+
 fn list_create<'a>(datums: &[Datum<'a>], temp_storage: &'a RowArena) -> Datum<'a> {
     temp_storage.make_datum(|packer| packer.push_list(datums))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct ListIndex;
+
+impl fmt::Display for ListIndex {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("list_index")
+    }
+}
 // TODO(benesch): remove potentially dangerous usage of `as`.
 #[allow(clippy::as_conversions)]
 fn list_index<'a>(datums: &[Datum<'a>]) -> Datum<'a> {
@@ -612,6 +1073,26 @@ fn list_index<'a>(datums: &[Datum<'a>]) -> Datum<'a> {
     buf
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct MakeAclItem;
+
+impl fmt::Display for MakeAclItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("makeaclitem")
+    }
+}
+
 fn make_acl_item<'a>(datums: &[Datum<'a>]) -> Result<Datum<'a>, EvalError> {
     let grantee = Oid(datums[0].unwrap_uint32());
     let grantor = Oid(datums[1].unwrap_uint32());
@@ -631,6 +1112,26 @@ fn make_acl_item<'a>(datums: &[Datum<'a>]) -> Result<Datum<'a>, EvalError> {
         grantor,
         acl_mode,
     }))
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct MakeMzAclItem;
+
+impl fmt::Display for MakeMzAclItem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("make_mz_aclitem")
+    }
 }
 
 fn make_mz_acl_item<'a>(datums: &[Datum<'a>]) -> Result<Datum<'a>, EvalError> {
@@ -656,6 +1157,26 @@ fn make_mz_acl_item<'a>(datums: &[Datum<'a>]) -> Result<Datum<'a>, EvalError> {
         grantor,
         acl_mode,
     }))
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct MakeTimestamp;
+
+impl fmt::Display for MakeTimestamp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("makets")
+    }
 }
 
 // TODO(benesch): remove potentially dangerous usage of `as`.
@@ -695,6 +1216,28 @@ fn make_timestamp<'a>(datums: &[Datum<'a>]) -> Result<Datum<'a>, EvalError> {
     Ok(timestamp.try_into()?)
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct MapBuild {
+    pub value_type: SqlScalarType,
+}
+
+impl fmt::Display for MapBuild {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("map_build")
+    }
+}
+
 fn map_build<'a>(datums: &[Datum<'a>], temp_storage: &'a RowArena) -> Datum<'a> {
     // Collect into a `BTreeMap` to provide the same semantics as it.
     let map: std::collections::BTreeMap<&str, _> = datums
@@ -710,6 +1253,26 @@ fn map_build<'a>(datums: &[Datum<'a>], temp_storage: &'a RowArena) -> Datum<'a> 
         .collect();
 
     temp_storage.make_datum(|packer| packer.push_dict(map))
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct Or;
+
+impl fmt::Display for Or {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("OR")
+    }
 }
 
 pub fn or<'a>(
@@ -734,6 +1297,26 @@ pub fn or<'a>(
         (Some(err), _) => Err(err),
         (None, true) => Ok(Datum::Null),
         (None, false) => Ok(Datum::False),
+    }
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct PadLeading;
+
+impl fmt::Display for PadLeading {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("lpad")
     }
 }
 
@@ -777,6 +1360,26 @@ fn pad_leading<'a>(
     Ok(Datum::String(temp_storage.push_string(buf)))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct RegexpMatch;
+
+impl fmt::Display for RegexpMatch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("regexp_match")
+    }
+}
+
 fn regexp_match_dynamic<'a>(
     datums: &[Datum<'a>],
     temp_storage: &'a RowArena,
@@ -791,6 +1394,26 @@ fn regexp_match_dynamic<'a>(
     regexp_match_static(haystack, temp_storage, &needle)
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct RegexpSplitToArray;
+
+impl fmt::Display for RegexpSplitToArray {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("regexp_split_to_array")
+    }
+}
+
 fn regexp_split_to_array<'a>(
     text: Datum<'a>,
     regexp: Datum<'a>,
@@ -802,6 +1425,26 @@ fn regexp_split_to_array<'a>(
     let flags = flags.unwrap_str();
     let regexp = build_regex(regexp, flags)?;
     regexp_split_to_array_re(text, &regexp, temp_storage)
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct RegexpReplace;
+
+impl fmt::Display for RegexpReplace {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("regexp_replace")
+    }
 }
 
 fn regexp_replace_dynamic<'a>(
@@ -822,6 +1465,26 @@ fn regexp_replace_dynamic<'a>(
         Cow::Owned(s) => temp_storage.push_string(s),
     };
     Ok(Datum::String(replaced))
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct Replace;
+
+impl fmt::Display for Replace {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("replace")
+    }
 }
 
 fn replace<'a>(datums: &[Datum<'a>], temp_storage: &'a RowArena) -> Result<Datum<'a>, EvalError> {
@@ -846,6 +1509,26 @@ fn replace<'a>(datums: &[Datum<'a>], temp_storage: &'a RowArena) -> Result<Datum
     Ok(Datum::String(
         temp_storage.push_string(text.replace(from, to)),
     ))
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct StringToArray;
+
+impl fmt::Display for StringToArray {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("string_to_array")
+    }
 }
 
 fn string_to_array<'a>(
@@ -930,6 +1613,26 @@ fn string_to_array_impl<'a>(
     Ok(temp_storage.push_unary_row(row))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct Substr;
+
+impl fmt::Display for Substr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("substr")
+    }
+}
+
 fn substr<'a>(datums: &[Datum<'a>]) -> Result<Datum<'a>, EvalError> {
     let s: &'a str = datums[0].unwrap_str();
 
@@ -982,6 +1685,26 @@ fn substr<'a>(datums: &[Datum<'a>]) -> Result<Datum<'a>, EvalError> {
     }
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct SplitPart;
+
+impl fmt::Display for SplitPart {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("split_string")
+    }
+}
+
 fn split_part<'a>(datums: &[Datum<'a>]) -> Result<Datum<'a>, EvalError> {
     let string = datums[0].unwrap_str();
     let delimiter = datums[1].unwrap_str();
@@ -1014,6 +1737,26 @@ fn split_part<'a>(datums: &[Datum<'a>]) -> Result<Datum<'a>, EvalError> {
     ))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct Concat;
+
+impl fmt::Display for Concat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("concat")
+    }
+}
+
 fn text_concat_variadic<'a>(
     datums: &[Datum<'a>],
     temp_storage: &'a RowArena,
@@ -1034,6 +1777,26 @@ fn text_concat_variadic<'a>(
         }
     }
     Ok(Datum::String(temp_storage.push_string(buf)))
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct ConcatWs;
+
+impl fmt::Display for ConcatWs {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("concat_ws")
+    }
 }
 
 fn text_concat_ws<'a>(
@@ -1067,6 +1830,26 @@ fn text_concat_ws<'a>(
     Ok(Datum::String(temp_storage.push_string(buf)))
 }
 
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct Translate;
+
+impl fmt::Display for Translate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("translate")
+    }
+}
+
 fn translate<'a>(datums: &[Datum<'a>], temp_storage: &'a RowArena) -> Datum<'a> {
     let string = datums[0].unwrap_str();
     let from = datums[1].unwrap_str().chars().collect::<Vec<_>>();
@@ -1086,6 +1869,26 @@ fn translate<'a>(datums: &[Datum<'a>], temp_storage: &'a RowArena) -> Datum<'a> 
 }
 
 // TODO ///
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct ListSliceLinear;
+
+impl fmt::Display for ListSliceLinear {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("list_slice_linear")
+    }
+}
 
 // TODO(benesch): remove potentially dangerous usage of `as`.
 #[allow(clippy::as_conversions)]
@@ -1153,69 +1956,97 @@ fn list_slice_linear<'a>(datums: &[Datum<'a>], temp_storage: &'a RowArena) -> Da
     Hash,
     MzReflect
 )]
-pub enum VariadicFunc {
-    Coalesce,
-    Greatest,
-    Least,
-    Concat,
-    ConcatWs,
-    MakeTimestamp,
-    PadLeading,
-    Substr,
-    Replace,
-    JsonbBuildArray,
-    JsonbBuildObject,
-    MapBuild {
-        value_type: SqlScalarType,
-    },
-    ArrayCreate {
-        // We need to know the element type to type empty arrays.
-        elem_type: SqlScalarType,
-    },
-    ArrayToString {
-        elem_type: SqlScalarType,
-    },
-    ArrayIndex {
-        // Adjusts the index by offset depending on whether being called on an array or an
-        // Int2Vector.
-        offset: i64,
-    },
-    ListCreate {
-        // We need to know the element type to type empty lists.
-        elem_type: SqlScalarType,
-    },
-    RecordCreate {
-        field_names: Vec<ColumnName>,
-    },
-    ListIndex,
-    ListSliceLinear,
-    SplitPart,
-    RegexpMatch,
-    HmacString,
-    HmacBytes,
-    ErrorIfNull,
-    DateBinTimestamp,
-    DateBinTimestampTz,
-    DateDiffTimestamp,
-    DateDiffTimestampTz,
-    DateDiffDate,
-    DateDiffTime,
-    And,
-    Or,
-    RangeCreate {
-        elem_type: SqlScalarType,
-    },
-    MakeAclItem,
-    MakeMzAclItem,
-    Translate,
-    ArrayPosition,
-    ArrayFill {
-        elem_type: SqlScalarType,
-    },
-    StringToArray,
-    TimezoneTime,
-    RegexpSplitToArray,
-    RegexpReplace,
+pub struct DateBinTimestamp;
+
+impl fmt::Display for DateBinTimestamp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("timestamp_bin")
+    }
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct DateBinTimestampTz;
+
+impl fmt::Display for DateBinTimestampTz {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("timestamptz_bin")
+    }
+}
+
+#[derive(
+    Ord,
+    PartialOrd,
+    Clone,
+    Debug,
+    Eq,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Hash,
+    MzReflect
+)]
+pub struct TimezoneTime;
+
+impl fmt::Display for TimezoneTime {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("timezonet")
+    }
+}
+
+derive_variadic! {
+    Coalesce(Coalesce),
+    Greatest(Greatest),
+    Least(Least),
+    Concat(Concat),
+    ConcatWs(ConcatWs),
+    MakeTimestamp(MakeTimestamp),
+    PadLeading(PadLeading),
+    Substr(Substr),
+    Replace(Replace),
+    JsonbBuildArray(JsonbBuildArray),
+    JsonbBuildObject(JsonbBuildObject),
+    MapBuild(MapBuild),
+    ArrayCreate(ArrayCreate),
+    ArrayToString(ArrayToString),
+    ArrayIndex(ArrayIndex),
+    ListCreate(ListCreate),
+    RecordCreate(RecordCreate),
+    ListIndex(ListIndex),
+    ListSliceLinear(ListSliceLinear),
+    SplitPart(SplitPart),
+    RegexpMatch(RegexpMatch),
+    HmacString(HmacString),
+    HmacBytes(HmacBytes),
+    ErrorIfNull(ErrorIfNull),
+    DateBinTimestamp(DateBinTimestamp),
+    DateBinTimestampTz(DateBinTimestampTz),
+    DateDiffTimestamp(DateDiffTimestamp),
+    DateDiffTimestampTz(DateDiffTimestampTz),
+    DateDiffDate(DateDiffDate),
+    DateDiffTime(DateDiffTime),
+    And(And),
+    Or(Or),
+    RangeCreate(RangeCreate),
+    MakeAclItem(MakeAclItem),
+    MakeMzAclItem(MakeMzAclItem),
+    Translate(Translate),
+    ArrayPosition(ArrayPosition),
+    ArrayFill(ArrayFill),
+    StringToArray(StringToArray),
+    TimezoneTime(TimezoneTime),
+    RegexpSplitToArray(RegexpSplitToArray),
+    RegexpReplace(RegexpReplace),
 }
 
 impl VariadicFunc {
@@ -1227,12 +2058,12 @@ impl VariadicFunc {
     ) -> Result<Datum<'a>, EvalError> {
         // Evaluate all non-eager functions directly
         match self {
-            VariadicFunc::Coalesce => return coalesce(datums, temp_storage, exprs),
-            VariadicFunc::Greatest => return greatest(datums, temp_storage, exprs),
-            VariadicFunc::And => return and(datums, temp_storage, exprs),
-            VariadicFunc::Or => return or(datums, temp_storage, exprs),
-            VariadicFunc::ErrorIfNull => return error_if_null(datums, temp_storage, exprs),
-            VariadicFunc::Least => return least(datums, temp_storage, exprs),
+            VariadicFunc::Coalesce(_) => return coalesce(datums, temp_storage, exprs),
+            VariadicFunc::Greatest(_) => return greatest(datums, temp_storage, exprs),
+            VariadicFunc::And(_) => return and(datums, temp_storage, exprs),
+            VariadicFunc::Or(_) => return or(datums, temp_storage, exprs),
+            VariadicFunc::ErrorIfNull(_) => return error_if_null(datums, temp_storage, exprs),
+            VariadicFunc::Least(_) => return least(datums, temp_storage, exprs),
             _ => {}
         };
 
@@ -1248,71 +2079,71 @@ impl VariadicFunc {
 
         // Evaluate eager functions
         match self {
-            VariadicFunc::Coalesce
-            | VariadicFunc::Greatest
-            | VariadicFunc::And
-            | VariadicFunc::Or
-            | VariadicFunc::ErrorIfNull
-            | VariadicFunc::Least => unreachable!(),
-            VariadicFunc::Concat => text_concat_variadic(&ds, temp_storage),
-            VariadicFunc::ConcatWs => text_concat_ws(&ds, temp_storage),
-            VariadicFunc::MakeTimestamp => make_timestamp(&ds),
-            VariadicFunc::PadLeading => pad_leading(&ds, temp_storage),
-            VariadicFunc::Substr => substr(&ds),
-            VariadicFunc::Replace => replace(&ds, temp_storage),
-            VariadicFunc::Translate => Ok(translate(&ds, temp_storage)),
-            VariadicFunc::JsonbBuildArray => Ok(jsonb_build_array(&ds, temp_storage)),
-            VariadicFunc::JsonbBuildObject => jsonb_build_object(&ds, temp_storage),
-            VariadicFunc::MapBuild { .. } => Ok(map_build(&ds, temp_storage)),
-            VariadicFunc::ArrayCreate {
+            VariadicFunc::Coalesce(_)
+            | VariadicFunc::Greatest(_)
+            | VariadicFunc::And(_)
+            | VariadicFunc::Or(_)
+            | VariadicFunc::ErrorIfNull(_)
+            | VariadicFunc::Least(_) => unreachable!(),
+            VariadicFunc::Concat(_) => text_concat_variadic(&ds, temp_storage),
+            VariadicFunc::ConcatWs(_) => text_concat_ws(&ds, temp_storage),
+            VariadicFunc::MakeTimestamp(_) => make_timestamp(&ds),
+            VariadicFunc::PadLeading(_) => pad_leading(&ds, temp_storage),
+            VariadicFunc::Substr(_) => substr(&ds),
+            VariadicFunc::Replace(_) => replace(&ds, temp_storage),
+            VariadicFunc::Translate(_) => Ok(translate(&ds, temp_storage)),
+            VariadicFunc::JsonbBuildArray(_) => Ok(jsonb_build_array(&ds, temp_storage)),
+            VariadicFunc::JsonbBuildObject(_) => jsonb_build_object(&ds, temp_storage),
+            VariadicFunc::MapBuild(..) => Ok(map_build(&ds, temp_storage)),
+            VariadicFunc::ArrayCreate(ArrayCreate {
                 elem_type: SqlScalarType::Array(_),
-            } => array_create_multidim(&ds, temp_storage),
-            VariadicFunc::ArrayCreate { .. } => array_create_scalar(&ds, temp_storage),
-            VariadicFunc::ArrayToString { elem_type } => {
+            }) => array_create_multidim(&ds, temp_storage),
+            VariadicFunc::ArrayCreate(..) => array_create_scalar(&ds, temp_storage),
+            VariadicFunc::ArrayToString(ArrayToString { elem_type }) => {
                 array_to_string(&ds, elem_type, temp_storage)
             }
-            VariadicFunc::ArrayIndex { offset } => Ok(array_index(&ds, *offset)),
-
-            VariadicFunc::ListCreate { .. } | VariadicFunc::RecordCreate { .. } => {
+            VariadicFunc::ArrayIndex(ArrayIndex { offset }) => Ok(array_index(&ds, *offset)),
+            VariadicFunc::ListCreate(..) | VariadicFunc::RecordCreate(..) => {
                 Ok(list_create(&ds, temp_storage))
             }
-            VariadicFunc::ListIndex => Ok(list_index(&ds)),
-            VariadicFunc::ListSliceLinear => Ok(list_slice_linear(&ds, temp_storage)),
-            VariadicFunc::SplitPart => split_part(&ds),
-            VariadicFunc::RegexpMatch => regexp_match_dynamic(&ds, temp_storage),
-            VariadicFunc::HmacString => hmac_string(&ds, temp_storage),
-            VariadicFunc::HmacBytes => hmac_bytes(&ds, temp_storage),
-            VariadicFunc::DateBinTimestamp => date_bin(
+            VariadicFunc::ListIndex(_) => Ok(list_index(&ds)),
+            VariadicFunc::ListSliceLinear(_) => Ok(list_slice_linear(&ds, temp_storage)),
+            VariadicFunc::SplitPart(_) => split_part(&ds),
+            VariadicFunc::RegexpMatch(_) => regexp_match_dynamic(&ds, temp_storage),
+            VariadicFunc::HmacString(_) => hmac_string(&ds, temp_storage),
+            VariadicFunc::HmacBytes(_) => hmac_bytes(&ds, temp_storage),
+            VariadicFunc::DateBinTimestamp(_) => date_bin(
                 ds[0].unwrap_interval(),
                 ds[1].unwrap_timestamp(),
                 ds[2].unwrap_timestamp(),
             )
             .into_result(temp_storage),
-            VariadicFunc::DateBinTimestampTz => date_bin(
+            VariadicFunc::DateBinTimestampTz(_) => date_bin(
                 ds[0].unwrap_interval(),
                 ds[1].unwrap_timestamptz(),
                 ds[2].unwrap_timestamptz(),
             )
             .into_result(temp_storage),
-            VariadicFunc::DateDiffTimestamp => date_diff_timestamp(ds[0], ds[1], ds[2]),
-            VariadicFunc::DateDiffTimestampTz => date_diff_timestamptz(ds[0], ds[1], ds[2]),
-            VariadicFunc::DateDiffDate => date_diff_date(ds[0], ds[1], ds[2]),
-            VariadicFunc::DateDiffTime => date_diff_time(ds[0], ds[1], ds[2]),
-            VariadicFunc::RangeCreate { .. } => create_range(&ds, temp_storage),
-            VariadicFunc::MakeAclItem => make_acl_item(&ds),
-            VariadicFunc::MakeMzAclItem => make_mz_acl_item(&ds),
-            VariadicFunc::ArrayPosition => array_position(&ds),
-            VariadicFunc::ArrayFill { .. } => array_fill(&ds, temp_storage),
-            VariadicFunc::TimezoneTime => parse_timezone(ds[0].unwrap_str(), TimezoneSpec::Posix)
-                .map(|tz| {
+            VariadicFunc::DateDiffTimestamp(_) => date_diff_timestamp(ds[0], ds[1], ds[2]),
+            VariadicFunc::DateDiffTimestampTz(_) => date_diff_timestamptz(ds[0], ds[1], ds[2]),
+            VariadicFunc::DateDiffDate(_) => date_diff_date(ds[0], ds[1], ds[2]),
+            VariadicFunc::DateDiffTime(_) => date_diff_time(ds[0], ds[1], ds[2]),
+            VariadicFunc::RangeCreate(..) => create_range(&ds, temp_storage),
+            VariadicFunc::MakeAclItem(_) => make_acl_item(&ds),
+            VariadicFunc::MakeMzAclItem(_) => make_mz_acl_item(&ds),
+            VariadicFunc::ArrayPosition(_) => array_position(&ds),
+            VariadicFunc::ArrayFill(..) => array_fill(&ds, temp_storage),
+            VariadicFunc::TimezoneTime(_) => {
+                parse_timezone(ds[0].unwrap_str(), TimezoneSpec::Posix).map(|tz| {
                     timezone_time(
                         tz,
                         ds[1].unwrap_time(),
                         &ds[2].unwrap_timestamptz().naive_utc(),
                     )
                     .into()
-                }),
-            VariadicFunc::RegexpSplitToArray => {
+                })
+            }
+            VariadicFunc::RegexpSplitToArray(_) => {
                 let flags = if ds.len() == 2 {
                     Datum::String("")
                 } else {
@@ -1320,8 +2151,8 @@ impl VariadicFunc {
                 };
                 regexp_split_to_array(ds[0], ds[1], flags, temp_storage)
             }
-            VariadicFunc::RegexpReplace => regexp_replace_dynamic(&ds, temp_storage),
-            VariadicFunc::StringToArray => {
+            VariadicFunc::RegexpReplace(_) => regexp_replace_dynamic(&ds, temp_storage),
+            VariadicFunc::StringToArray(_) => {
                 let null_string = if ds.len() == 2 { Datum::Null } else { ds[2] };
 
                 string_to_array(ds[0], ds[1], null_string, temp_storage)
@@ -1331,58 +2162,59 @@ impl VariadicFunc {
 
     pub fn is_associative(&self) -> bool {
         match self {
-            VariadicFunc::Coalesce
-            | VariadicFunc::Greatest
-            | VariadicFunc::Least
-            | VariadicFunc::Concat
-            | VariadicFunc::And
-            | VariadicFunc::Or => true,
+            VariadicFunc::Coalesce(_)
+            | VariadicFunc::Greatest(_)
+            | VariadicFunc::Least(_)
+            | VariadicFunc::Concat(_)
+            | VariadicFunc::And(_)
+            | VariadicFunc::Or(_) => true,
 
-            VariadicFunc::MakeTimestamp
-            | VariadicFunc::PadLeading
-            | VariadicFunc::ConcatWs
-            | VariadicFunc::Substr
-            | VariadicFunc::Replace
-            | VariadicFunc::Translate
-            | VariadicFunc::JsonbBuildArray
-            | VariadicFunc::JsonbBuildObject
-            | VariadicFunc::MapBuild { value_type: _ }
-            | VariadicFunc::ArrayCreate { elem_type: _ }
-            | VariadicFunc::ArrayToString { elem_type: _ }
-            | VariadicFunc::ArrayIndex { offset: _ }
-            | VariadicFunc::ListCreate { elem_type: _ }
-            | VariadicFunc::RecordCreate { field_names: _ }
-            | VariadicFunc::ListIndex
-            | VariadicFunc::ListSliceLinear
-            | VariadicFunc::SplitPart
-            | VariadicFunc::RegexpMatch
-            | VariadicFunc::HmacString
-            | VariadicFunc::HmacBytes
-            | VariadicFunc::ErrorIfNull
-            | VariadicFunc::DateBinTimestamp
-            | VariadicFunc::DateBinTimestampTz
-            | VariadicFunc::DateDiffTimestamp
-            | VariadicFunc::DateDiffTimestampTz
-            | VariadicFunc::DateDiffDate
-            | VariadicFunc::DateDiffTime
-            | VariadicFunc::RangeCreate { .. }
-            | VariadicFunc::MakeAclItem
-            | VariadicFunc::MakeMzAclItem
-            | VariadicFunc::ArrayPosition
-            | VariadicFunc::ArrayFill { .. }
-            | VariadicFunc::TimezoneTime
-            | VariadicFunc::RegexpSplitToArray
-            | VariadicFunc::StringToArray
-            | VariadicFunc::RegexpReplace => false,
+            VariadicFunc::MakeTimestamp(_)
+            | VariadicFunc::PadLeading(_)
+            | VariadicFunc::ConcatWs(_)
+            | VariadicFunc::Substr(_)
+            | VariadicFunc::Replace(_)
+            | VariadicFunc::Translate(_)
+            | VariadicFunc::JsonbBuildArray(_)
+            | VariadicFunc::JsonbBuildObject(_)
+            | VariadicFunc::MapBuild(..)
+            | VariadicFunc::ArrayCreate(..)
+            | VariadicFunc::ArrayToString(..)
+            | VariadicFunc::ArrayIndex(..)
+            | VariadicFunc::ListCreate(..)
+            | VariadicFunc::RecordCreate(..)
+            | VariadicFunc::ListIndex(_)
+            | VariadicFunc::ListSliceLinear(_)
+            | VariadicFunc::SplitPart(_)
+            | VariadicFunc::RegexpMatch(_)
+            | VariadicFunc::HmacString(_)
+            | VariadicFunc::HmacBytes(_)
+            | VariadicFunc::ErrorIfNull(_)
+            | VariadicFunc::DateBinTimestamp(_)
+            | VariadicFunc::DateBinTimestampTz(_)
+            | VariadicFunc::DateDiffTimestamp(_)
+            | VariadicFunc::DateDiffTimestampTz(_)
+            | VariadicFunc::DateDiffDate(_)
+            | VariadicFunc::DateDiffTime(_)
+            | VariadicFunc::RangeCreate(..)
+            | VariadicFunc::MakeAclItem(_)
+            | VariadicFunc::MakeMzAclItem(_)
+            | VariadicFunc::ArrayPosition(_)
+            | VariadicFunc::ArrayFill(..)
+            | VariadicFunc::TimezoneTime(_)
+            | VariadicFunc::RegexpSplitToArray(_)
+            | VariadicFunc::StringToArray(_)
+            | VariadicFunc::RegexpReplace(_) => false,
         }
     }
 
     pub fn output_type(&self, input_types: Vec<SqlColumnType>) -> SqlColumnType {
-        use VariadicFunc::*;
         let in_nullable = input_types.iter().any(|t| t.nullable);
         match self {
-            Greatest | Least => input_types.into_iter().reduce(|l, r| l.union(&r)).unwrap(),
-            Coalesce => {
+            Self::Greatest(_) | Self::Least(_) => {
+                input_types.into_iter().reduce(|l, r| l.union(&r)).unwrap()
+            }
+            Self::Coalesce(_) => {
                 // Note that the parser doesn't allow empty argument lists for variadic functions
                 // that use the standard function call syntax (ArrayCreate and co. are different
                 // because of the special syntax for calling them).
@@ -1393,19 +2225,21 @@ impl VariadicFunc {
                     .unwrap()
                     .nullable(nullable)
             }
-            Concat | ConcatWs => SqlScalarType::String.nullable(in_nullable),
-            MakeTimestamp => SqlScalarType::Timestamp { precision: None }.nullable(true),
-            PadLeading => SqlScalarType::String.nullable(in_nullable),
-            Substr => SqlScalarType::String.nullable(in_nullable),
-            Replace => SqlScalarType::String.nullable(in_nullable),
-            Translate => SqlScalarType::String.nullable(in_nullable),
-            JsonbBuildArray | JsonbBuildObject => SqlScalarType::Jsonb.nullable(true),
-            MapBuild { value_type } => SqlScalarType::Map {
+            Self::Concat(_) | Self::ConcatWs(_) => SqlScalarType::String.nullable(in_nullable),
+            Self::MakeTimestamp(_) => SqlScalarType::Timestamp { precision: None }.nullable(true),
+            Self::PadLeading(_) => SqlScalarType::String.nullable(in_nullable),
+            Self::Substr(_) => SqlScalarType::String.nullable(in_nullable),
+            Self::Replace(_) => SqlScalarType::String.nullable(in_nullable),
+            Self::Translate(_) => SqlScalarType::String.nullable(in_nullable),
+            Self::JsonbBuildArray(_) | Self::JsonbBuildObject(_) => {
+                SqlScalarType::Jsonb.nullable(true)
+            }
+            Self::MapBuild(MapBuild { value_type }) => SqlScalarType::Map {
                 value_type: Box::new(value_type.clone()),
                 custom_id: None,
             }
             .nullable(true),
-            ArrayCreate { elem_type } => {
+            Self::ArrayCreate(ArrayCreate { elem_type }) => {
                 soft_assert_or_log!(
                     input_types.iter().all(|t| {
                         // This ensures that the types are compatiable, but nullability may vary deeply in the types.
@@ -1420,13 +2254,13 @@ impl VariadicFunc {
                     _ => SqlScalarType::Array(Box::new(elem_type.clone())).nullable(false),
                 }
             }
-            ArrayToString { .. } => SqlScalarType::String.nullable(in_nullable),
-            ArrayIndex { .. } => input_types[0]
+            Self::ArrayToString(..) => SqlScalarType::String.nullable(in_nullable),
+            Self::ArrayIndex(..) => input_types[0]
                 .scalar_type
                 .unwrap_array_element_type()
                 .clone()
                 .nullable(true),
-            ListCreate { elem_type } => {
+            Self::ListCreate(ListCreate { elem_type }) => {
                 soft_assert_or_log!(
                     input_types.iter().all(|t| {
                         // This ensures that the types are compatiable, but nullability may vary deeply in the types.
@@ -1442,13 +2276,13 @@ impl VariadicFunc {
                 }
                 .nullable(false)
             }
-            ListIndex => input_types[0]
+            Self::ListIndex(_) => input_types[0]
                 .scalar_type
                 .unwrap_list_nth_layer_type(input_types.len() - 1)
                 .clone()
                 .nullable(true),
-            ListSliceLinear { .. } => input_types[0].scalar_type.clone().nullable(in_nullable),
-            RecordCreate { field_names } => SqlScalarType::Record {
+            Self::ListSliceLinear(..) => input_types[0].scalar_type.clone().nullable(in_nullable),
+            Self::RecordCreate(RecordCreate { field_names }) => SqlScalarType::Record {
                 fields: field_names
                     .clone()
                     .into_iter()
@@ -1457,35 +2291,41 @@ impl VariadicFunc {
                 custom_id: None,
             }
             .nullable(false),
-            SplitPart => SqlScalarType::String.nullable(in_nullable),
-            RegexpMatch => SqlScalarType::Array(Box::new(SqlScalarType::String)).nullable(true),
-            HmacString | HmacBytes => SqlScalarType::Bytes.nullable(in_nullable),
-            ErrorIfNull => input_types[0].scalar_type.clone().nullable(false),
-            DateBinTimestamp => SqlScalarType::Timestamp { precision: None }.nullable(in_nullable),
-            DateBinTimestampTz => {
+            Self::SplitPart(_) => SqlScalarType::String.nullable(in_nullable),
+            Self::RegexpMatch(_) => {
+                SqlScalarType::Array(Box::new(SqlScalarType::String)).nullable(true)
+            }
+            Self::HmacString(_) | Self::HmacBytes(_) => SqlScalarType::Bytes.nullable(in_nullable),
+            Self::ErrorIfNull(_) => input_types[0].scalar_type.clone().nullable(false),
+            Self::DateBinTimestamp(_) => {
+                SqlScalarType::Timestamp { precision: None }.nullable(in_nullable)
+            }
+            Self::DateBinTimestampTz(_) => {
                 SqlScalarType::TimestampTz { precision: None }.nullable(in_nullable)
             }
-            DateDiffTimestamp => SqlScalarType::Int64.nullable(in_nullable),
-            DateDiffTimestampTz => SqlScalarType::Int64.nullable(in_nullable),
-            DateDiffDate => SqlScalarType::Int64.nullable(in_nullable),
-            DateDiffTime => SqlScalarType::Int64.nullable(in_nullable),
-            And | Or => SqlScalarType::Bool.nullable(in_nullable),
-            RangeCreate { elem_type } => SqlScalarType::Range {
+            Self::DateDiffTimestamp(_) => SqlScalarType::Int64.nullable(in_nullable),
+            Self::DateDiffTimestampTz(_) => SqlScalarType::Int64.nullable(in_nullable),
+            Self::DateDiffDate(_) => SqlScalarType::Int64.nullable(in_nullable),
+            Self::DateDiffTime(_) => SqlScalarType::Int64.nullable(in_nullable),
+            Self::And(_) | Self::Or(_) => SqlScalarType::Bool.nullable(in_nullable),
+            Self::RangeCreate(RangeCreate { elem_type }) => SqlScalarType::Range {
                 element_type: Box::new(elem_type.clone()),
             }
             .nullable(false),
-            MakeAclItem => SqlScalarType::AclItem.nullable(true),
-            MakeMzAclItem => SqlScalarType::MzAclItem.nullable(true),
-            ArrayPosition => SqlScalarType::Int32.nullable(true),
-            ArrayFill { elem_type } => {
+            Self::MakeAclItem(_) => SqlScalarType::AclItem.nullable(true),
+            Self::MakeMzAclItem(_) => SqlScalarType::MzAclItem.nullable(true),
+            Self::ArrayPosition(_) => SqlScalarType::Int32.nullable(true),
+            Self::ArrayFill(ArrayFill { elem_type }) => {
                 SqlScalarType::Array(Box::new(elem_type.clone())).nullable(false)
             }
-            TimezoneTime => SqlScalarType::Time.nullable(in_nullable),
-            RegexpSplitToArray => {
+            Self::TimezoneTime(_) => SqlScalarType::Time.nullable(in_nullable),
+            Self::RegexpSplitToArray(_) => {
                 SqlScalarType::Array(Box::new(SqlScalarType::String)).nullable(in_nullable)
             }
-            RegexpReplace => SqlScalarType::String.nullable(in_nullable),
-            StringToArray => SqlScalarType::Array(Box::new(SqlScalarType::String)).nullable(true),
+            Self::RegexpReplace(_) => SqlScalarType::String.nullable(in_nullable),
+            Self::StringToArray(_) => {
+                SqlScalarType::Array(Box::new(SqlScalarType::String)).nullable(true)
+            }
         }
     }
 
@@ -1498,25 +2338,25 @@ impl VariadicFunc {
         // that **DO NOT** propagate nulls.
         !matches!(
             self,
-            VariadicFunc::And
-                | VariadicFunc::Or
-                | VariadicFunc::Coalesce
-                | VariadicFunc::Greatest
-                | VariadicFunc::Least
-                | VariadicFunc::Concat
-                | VariadicFunc::ConcatWs
-                | VariadicFunc::JsonbBuildArray
-                | VariadicFunc::JsonbBuildObject
-                | VariadicFunc::MapBuild { .. }
-                | VariadicFunc::ListCreate { .. }
-                | VariadicFunc::RecordCreate { .. }
-                | VariadicFunc::ArrayCreate { .. }
-                | VariadicFunc::ArrayToString { .. }
-                | VariadicFunc::ErrorIfNull
-                | VariadicFunc::RangeCreate { .. }
-                | VariadicFunc::ArrayPosition
-                | VariadicFunc::ArrayFill { .. }
-                | VariadicFunc::StringToArray
+            VariadicFunc::And(_)
+                | VariadicFunc::Or(_)
+                | VariadicFunc::Coalesce(_)
+                | VariadicFunc::Greatest(_)
+                | VariadicFunc::Least(_)
+                | VariadicFunc::Concat(_)
+                | VariadicFunc::ConcatWs(_)
+                | VariadicFunc::JsonbBuildArray(_)
+                | VariadicFunc::JsonbBuildObject(_)
+                | VariadicFunc::MapBuild(..)
+                | VariadicFunc::ListCreate(..)
+                | VariadicFunc::RecordCreate(..)
+                | VariadicFunc::ArrayCreate(..)
+                | VariadicFunc::ArrayToString(..)
+                | VariadicFunc::ErrorIfNull(_)
+                | VariadicFunc::RangeCreate(..)
+                | VariadicFunc::ArrayPosition(_)
+                | VariadicFunc::ArrayFill(..)
+                | VariadicFunc::StringToArray(_)
         )
     }
 
@@ -1526,72 +2366,70 @@ impl VariadicFunc {
     /// This is presently conservative, and may indicate that a function
     /// introduces nulls even when it does not.
     pub fn introduces_nulls(&self) -> bool {
-        use VariadicFunc::*;
         match self {
-            Concat
-            | ConcatWs
-            | PadLeading
-            | Substr
-            | Replace
-            | Translate
-            | JsonbBuildArray
-            | JsonbBuildObject
-            | MapBuild { .. }
-            | ArrayCreate { .. }
-            | ArrayToString { .. }
-            | ListCreate { .. }
-            | RecordCreate { .. }
-            | ListSliceLinear
-            | SplitPart
-            | HmacString
-            | HmacBytes
-            | ErrorIfNull
-            | DateBinTimestamp
-            | DateBinTimestampTz
-            | DateDiffTimestamp
-            | DateDiffTimestampTz
-            | DateDiffDate
-            | DateDiffTime
-            | RangeCreate { .. }
-            | And
-            | Or
-            | MakeAclItem
-            | MakeMzAclItem
-            | ArrayPosition
-            | ArrayFill { .. }
-            | TimezoneTime
-            | RegexpSplitToArray
-            | RegexpReplace => false,
-            Coalesce
-            | Greatest
-            | Least
-            | MakeTimestamp
-            | ArrayIndex { .. }
-            | StringToArray
-            | ListIndex
-            | RegexpMatch => true,
+            Self::Concat(_)
+            | Self::ConcatWs(_)
+            | Self::PadLeading(_)
+            | Self::Substr(_)
+            | Self::Replace(_)
+            | Self::Translate(_)
+            | Self::JsonbBuildArray(_)
+            | Self::JsonbBuildObject(_)
+            | Self::MapBuild(..)
+            | Self::ArrayCreate(..)
+            | Self::ArrayToString(..)
+            | Self::ListCreate(..)
+            | Self::RecordCreate(..)
+            | Self::ListSliceLinear(_)
+            | Self::SplitPart(_)
+            | Self::HmacString(_)
+            | Self::HmacBytes(_)
+            | Self::ErrorIfNull(_)
+            | Self::DateBinTimestamp(_)
+            | Self::DateBinTimestampTz(_)
+            | Self::DateDiffTimestamp(_)
+            | Self::DateDiffTimestampTz(_)
+            | Self::DateDiffDate(_)
+            | Self::DateDiffTime(_)
+            | Self::RangeCreate(..)
+            | Self::And(_)
+            | Self::Or(_)
+            | Self::MakeAclItem(_)
+            | Self::MakeMzAclItem(_)
+            | Self::ArrayPosition(_)
+            | Self::ArrayFill(..)
+            | Self::TimezoneTime(_)
+            | Self::RegexpSplitToArray(_)
+            | Self::RegexpReplace(_) => false,
+            Self::Coalesce(_)
+            | Self::Greatest(_)
+            | Self::Least(_)
+            | Self::MakeTimestamp(_)
+            | Self::ArrayIndex(..)
+            | Self::StringToArray(_)
+            | Self::ListIndex(_)
+            | Self::RegexpMatch(_) => true,
         }
     }
 
     pub fn switch_and_or(&self) -> Self {
         match self {
-            VariadicFunc::And => VariadicFunc::Or,
-            VariadicFunc::Or => VariadicFunc::And,
+            VariadicFunc::And(_) => Or.into(),
+            VariadicFunc::Or(_) => And.into(),
             _ => unreachable!(),
         }
     }
 
     pub fn is_infix_op(&self) -> bool {
-        use VariadicFunc::*;
-        matches!(self, And | Or)
+        matches!(self, Self::And(_) | Self::Or(_))
     }
 
     /// Gives the unit (u) of OR or AND, such that `u AND/OR x == x`.
     /// Note that a 0-arg AND/OR evaluates to unit_of_and_or.
     pub fn unit_of_and_or(&self) -> MirScalarExpr {
         match self {
-            VariadicFunc::And => MirScalarExpr::literal_true(),
-            VariadicFunc::Or => MirScalarExpr::literal_false(),
+            VariadicFunc::And(_) => MirScalarExpr::literal_true(),
+            VariadicFunc::Or(_) => MirScalarExpr::literal_false(),
             _ => unreachable!(),
         }
     }
@@ -1599,8 +2437,8 @@ impl VariadicFunc {
     /// Gives the zero (z) of OR or AND, such that `z AND/OR x == z`.
     pub fn zero_of_and_or(&self) -> MirScalarExpr {
         match self {
-            VariadicFunc::And => MirScalarExpr::literal_false(),
-            VariadicFunc::Or => MirScalarExpr::literal_true(),
+            VariadicFunc::And(_) => MirScalarExpr::literal_false(),
+            VariadicFunc::Or(_) => MirScalarExpr::literal_true(),
             _ => unreachable!(),
         }
     }
@@ -1608,14 +2446,14 @@ impl VariadicFunc {
     /// Returns true if the function could introduce an error on non-error inputs.
     pub fn could_error(&self) -> bool {
         match self {
-            VariadicFunc::And | VariadicFunc::Or => false,
-            VariadicFunc::Coalesce => false,
-            VariadicFunc::Greatest | VariadicFunc::Least => false,
-            VariadicFunc::Concat | VariadicFunc::ConcatWs => false,
-            VariadicFunc::Replace => false,
-            VariadicFunc::Translate => false,
-            VariadicFunc::ArrayIndex { .. } => false,
-            VariadicFunc::ListCreate { .. } | VariadicFunc::RecordCreate { .. } => false,
+            VariadicFunc::And(_) | VariadicFunc::Or(_) => false,
+            VariadicFunc::Coalesce(_) => false,
+            VariadicFunc::Greatest(_) | VariadicFunc::Least(_) => false,
+            VariadicFunc::Concat(_) | VariadicFunc::ConcatWs(_) => false,
+            VariadicFunc::Replace(_) => false,
+            VariadicFunc::Translate(_) => false,
+            VariadicFunc::ArrayIndex(..) => false,
+            VariadicFunc::ListCreate(..) | VariadicFunc::RecordCreate(..) => false,
             // All other cases are unknown
             _ => true,
         }
@@ -1635,106 +2473,48 @@ impl VariadicFunc {
     /// ie. the arguments and the result are non-error datums.
     pub fn is_monotone(&self) -> bool {
         match self {
-            VariadicFunc::Coalesce
-            | VariadicFunc::Greatest
-            | VariadicFunc::Least
-            | VariadicFunc::And
-            | VariadicFunc::Or => true,
-            VariadicFunc::Concat
-            | VariadicFunc::ConcatWs
-            | VariadicFunc::MakeTimestamp
-            | VariadicFunc::PadLeading
-            | VariadicFunc::Substr
-            | VariadicFunc::Replace
-            | VariadicFunc::JsonbBuildArray
-            | VariadicFunc::JsonbBuildObject
-            | VariadicFunc::MapBuild { .. }
-            | VariadicFunc::ArrayCreate { .. }
-            | VariadicFunc::ArrayToString { .. }
-            | VariadicFunc::ArrayIndex { .. }
-            | VariadicFunc::ListCreate { .. }
-            | VariadicFunc::RecordCreate { .. }
-            | VariadicFunc::ListIndex
-            | VariadicFunc::ListSliceLinear
-            | VariadicFunc::SplitPart
-            | VariadicFunc::RegexpMatch
-            | VariadicFunc::HmacString
-            | VariadicFunc::HmacBytes
-            | VariadicFunc::ErrorIfNull
-            | VariadicFunc::DateBinTimestamp
-            | VariadicFunc::DateBinTimestampTz
-            | VariadicFunc::RangeCreate { .. }
-            | VariadicFunc::MakeAclItem
-            | VariadicFunc::MakeMzAclItem
-            | VariadicFunc::Translate
-            | VariadicFunc::ArrayPosition
-            | VariadicFunc::ArrayFill { .. }
-            | VariadicFunc::DateDiffTimestamp
-            | VariadicFunc::DateDiffTimestampTz
-            | VariadicFunc::DateDiffDate
-            | VariadicFunc::DateDiffTime
-            | VariadicFunc::TimezoneTime
-            | VariadicFunc::RegexpSplitToArray
-            | VariadicFunc::StringToArray
-            | VariadicFunc::RegexpReplace => false,
-        }
-    }
-}
-
-impl std::fmt::Display for VariadicFunc {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            VariadicFunc::Coalesce => f.write_str("coalesce"),
-            VariadicFunc::Greatest => f.write_str("greatest"),
-            VariadicFunc::Least => f.write_str("least"),
-            VariadicFunc::Concat => f.write_str("concat"),
-            VariadicFunc::ConcatWs => f.write_str("concat_ws"),
-            VariadicFunc::MakeTimestamp => f.write_str("makets"),
-            VariadicFunc::PadLeading => f.write_str("lpad"),
-            VariadicFunc::Substr => f.write_str("substr"),
-            VariadicFunc::Replace => f.write_str("replace"),
-            VariadicFunc::Translate => f.write_str("translate"),
-            VariadicFunc::JsonbBuildArray => f.write_str("jsonb_build_array"),
-            VariadicFunc::JsonbBuildObject => f.write_str("jsonb_build_object"),
-            VariadicFunc::MapBuild { .. } => f.write_str("map_build"),
-            VariadicFunc::ArrayCreate { .. } => f.write_str("array_create"),
-            VariadicFunc::ArrayToString { .. } => f.write_str("array_to_string"),
-            VariadicFunc::ArrayIndex { .. } => f.write_str("array_index"),
-            VariadicFunc::ListCreate { .. } => f.write_str("list_create"),
-            VariadicFunc::RecordCreate { .. } => f.write_str("record_create"),
-            VariadicFunc::ListIndex => f.write_str("list_index"),
-            VariadicFunc::ListSliceLinear => f.write_str("list_slice_linear"),
-            VariadicFunc::SplitPart => f.write_str("split_string"),
-            VariadicFunc::RegexpMatch => f.write_str("regexp_match"),
-            VariadicFunc::HmacString | VariadicFunc::HmacBytes => f.write_str("hmac"),
-            VariadicFunc::ErrorIfNull => f.write_str("error_if_null"),
-            VariadicFunc::DateBinTimestamp => f.write_str("timestamp_bin"),
-            VariadicFunc::DateBinTimestampTz => f.write_str("timestamptz_bin"),
-            VariadicFunc::DateDiffTimestamp
-            | VariadicFunc::DateDiffTimestampTz
-            | VariadicFunc::DateDiffDate
-            | VariadicFunc::DateDiffTime => f.write_str("datediff"),
-            VariadicFunc::And => f.write_str("AND"),
-            VariadicFunc::Or => f.write_str("OR"),
-            VariadicFunc::RangeCreate {
-                elem_type: element_type,
-            } => f.write_str(match element_type {
-                SqlScalarType::Int32 => "int4range",
-                SqlScalarType::Int64 => "int8range",
-                SqlScalarType::Date => "daterange",
-                SqlScalarType::Numeric { .. } => "numrange",
-                SqlScalarType::Timestamp { .. } => "tsrange",
-                SqlScalarType::TimestampTz { .. } => "tstzrange",
-                _ => unreachable!(),
-            }),
-            VariadicFunc::MakeAclItem => f.write_str("makeaclitem"),
-            VariadicFunc::MakeMzAclItem => f.write_str("make_mz_aclitem"),
-            VariadicFunc::ArrayPosition => f.write_str("array_position"),
-            VariadicFunc::ArrayFill { .. } => f.write_str("array_fill"),
-            VariadicFunc::TimezoneTime => f.write_str("timezonet"),
-            VariadicFunc::RegexpSplitToArray => f.write_str("regexp_split_to_array"),
-            VariadicFunc::RegexpReplace => f.write_str("regexp_replace"),
-            VariadicFunc::StringToArray => f.write_str("string_to_array"),
+            VariadicFunc::Coalesce(_)
+            | VariadicFunc::Greatest(_)
+            | VariadicFunc::Least(_)
+            | VariadicFunc::And(_)
+            | VariadicFunc::Or(_) => true,
+            VariadicFunc::Concat(_)
+            | VariadicFunc::ConcatWs(_)
+            | VariadicFunc::MakeTimestamp(_)
+            | VariadicFunc::PadLeading(_)
+            | VariadicFunc::Substr(_)
+            | VariadicFunc::Replace(_)
+            | VariadicFunc::JsonbBuildArray(_)
+            | VariadicFunc::JsonbBuildObject(_)
+            | VariadicFunc::MapBuild(..)
+            | VariadicFunc::ArrayCreate(..)
+            | VariadicFunc::ArrayToString(..)
+            | VariadicFunc::ArrayIndex(..)
+            | VariadicFunc::ListCreate(..)
+            | VariadicFunc::RecordCreate(..)
+            | VariadicFunc::ListIndex(_)
+            | VariadicFunc::ListSliceLinear(_)
+            | VariadicFunc::SplitPart(_)
+            | VariadicFunc::RegexpMatch(_)
+            | VariadicFunc::HmacString(_)
+            | VariadicFunc::HmacBytes(_)
+            | VariadicFunc::ErrorIfNull(_)
+            | VariadicFunc::DateBinTimestamp(_)
+            | VariadicFunc::DateBinTimestampTz(_)
+            | VariadicFunc::RangeCreate(..)
+            | VariadicFunc::MakeAclItem(_)
+            | VariadicFunc::MakeMzAclItem(_)
+            | VariadicFunc::Translate(_)
+            | VariadicFunc::ArrayPosition(_)
+            | VariadicFunc::ArrayFill(..)
+            | VariadicFunc::DateDiffTimestamp(_)
+            | VariadicFunc::DateDiffTimestampTz(_)
+            | VariadicFunc::DateDiffDate(_)
+            | VariadicFunc::DateDiffTime(_)
+            | VariadicFunc::TimezoneTime(_)
+            | VariadicFunc::RegexpSplitToArray(_)
+            | VariadicFunc::StringToArray(_)
+            | VariadicFunc::RegexpReplace(_) => false,
         }
     }
 }
