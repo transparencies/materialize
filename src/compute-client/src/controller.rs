@@ -46,6 +46,7 @@ use mz_compute_types::dataflows::DataflowDescription;
 use mz_compute_types::dyncfgs::COMPUTE_REPLICA_EXPIRATION_OFFSET;
 use mz_dyncfg::ConfigSet;
 use mz_expr::RowSetFinishing;
+use mz_expr::row::RowCollection;
 use mz_ore::cast::CastFrom;
 use mz_ore::collections::CollectionExt;
 use mz_ore::metrics::MetricsRegistry;
@@ -150,8 +151,12 @@ impl PeekNotification {
     fn new(peek_response: &PeekResponse, offset: usize, limit: Option<usize>) -> Self {
         match peek_response {
             PeekResponse::Rows(rows) => {
-                let num_rows = u64::cast_from(rows.count(offset, limit));
-                let result_size = u64::cast_from(rows.byte_len());
+                let num_rows = u64::cast_from(RowCollection::offset_limit(
+                    rows.iter().map(|r| r.count()).sum(),
+                    offset,
+                    limit,
+                ));
+                let result_size = u64::cast_from(rows.iter().map(|r| r.byte_len()).sum::<usize>());
 
                 tracing::trace!(?num_rows, ?result_size, "inline peek result");
 
