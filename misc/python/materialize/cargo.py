@@ -48,8 +48,11 @@ class Crate:
         examples: The names of all examples in the crate.
     """
 
+    _inputs_cache: set[str] | None
+
     def __init__(self, root: Path, path: Path):
         self.root = root
+        self._inputs_cache = None
         with open(path / "Cargo.toml") as f:
             config = toml.load(f)
         self.name = config["package"]["name"]
@@ -116,6 +119,8 @@ class Crate:
         # † As a development convenience, we omit mzcompose configuration files
         # within a crate. This is technically incorrect if someone writes
         # `include!("mzcompose.py")`, but that seems like a crazy thing to do.
+        if self._inputs_cache is not None:
+            return self._inputs_cache
         return git.expand_globs(
             self.root,
             f"{self.path}/**",
@@ -245,3 +250,53 @@ class Workspace:
             for d in crate.path_dev_dependencies:
                 visit(self.crates[d])
         return deps
+
+    def precompute_crate_inputs(self) -> None:
+        """Pre-fetch all crate input files in a single batched git call.
+
+        This replaces ~118 individual pairs of git subprocess calls with
+        a single pair, then partitions the results by crate path in Python.
+        """
+        from materialize import spawn
+
+        root = next(iter(self.all_crates.values())).root
+        # Use paths relative to root for git specs and partitioning, since
+        # git --relative outputs paths relative to cwd (root). Crate paths
+        # may be absolute when MZ_ROOT is an absolute path.
+        crate_rel_paths = sorted(
+            set(str(c.path.relative_to(root)) for c in self.all_crates.values())
+        )
+
+        specs = []
+        for p in crate_rel_paths:
+            specs.append(f"{p}/**")
+            specs.append(f":(exclude){p}/mzcompose")
+            specs.append(f":(exclude){p}/mzcompose.py")
+
+        empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+        diff_files = spawn.capture(
+            ["git", "diff", "--name-only", "-z", "--relative", empty_tree, "--"]
+            + specs,
+            cwd=root,
+        )
+        ls_files = spawn.capture(
+            ["git", "ls-files", "--others", "--exclude-standard", "-z", "--"] + specs,
+            cwd=root,
+        )
+        all_files = set(
+            f for f in (diff_files + ls_files).split("\0") if f.strip() != ""
+        )
+
+        # Partition files by crate path (longest match first for nested crates)
+        crate_file_map: dict[str, set[str]] = {p: set() for p in crate_rel_paths}
+        sorted_paths = sorted(crate_rel_paths, key=len, reverse=True)
+        for f in all_files:
+            for cp in sorted_paths:
+                if f.startswith(cp + "/"):
+                    crate_file_map[cp].add(f)
+                    break
+
+        # Inject cached results into each Crate object
+        for crate in self.all_crates.values():
+            rel = str(crate.path.relative_to(root))
+            crate._inputs_cache = crate_file_map.get(rel, set())

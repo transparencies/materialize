@@ -234,9 +234,10 @@ class RepositoryDetails:
             return path
 
 
-def docker_images() -> set[str]:
+@cache
+def docker_images() -> frozenset[str]:
     """List the Docker images available on the local machine."""
-    return set(
+    return frozenset(
         spawn.capture(["docker", "images", "--format", "{{.Repository}}:{{.Tag}}"])
         .strip()
         .split("\n")
@@ -467,18 +468,25 @@ class Copy(PreImage):
 class CargoPreImage(PreImage):
     """A `PreImage` action that uses Cargo."""
 
-    def inputs(self) -> set[str]:
-        inputs = {
-            "ci/builder",
-            "Cargo.toml",
-            # TODO(benesch): we could in theory fingerprint only the subset of
-            # Cargo.lock that applies to the crates at hand, but that is a
-            # *lot* of work.
-            "Cargo.lock",
-            ".cargo/config",
-        }
+    @staticmethod
+    @cache
+    def _cargo_shared_inputs() -> frozenset[str]:
+        """Resolve shared Cargo inputs once and cache the result.
 
-        return inputs
+        This expands the 'ci/builder' directory glob and filters out
+        non-existent files like '.cargo/config', avoiding repeated
+        git subprocess calls in fingerprint().
+        """
+        inputs: set[str] = set()
+        inputs |= git.expand_globs(Path("."), "ci/builder/**")
+        inputs.add("Cargo.toml")
+        inputs.add("Cargo.lock")
+        if Path(".cargo/config").exists():
+            inputs.add(".cargo/config")
+        return frozenset(inputs)
+
+    def inputs(self) -> set[str]:
+        return set(CargoPreImage._cargo_shared_inputs())
 
     def extra(self) -> str:
         # Cargo images depend on the release mode and whether
@@ -759,9 +767,12 @@ class Image:
 
     _DOCKERFILE_MZFROM_RE = re.compile(rb"^MZFROM\s*(\S+)")
 
+    _context_files_cache: set[str] | None
+
     def __init__(self, rd: RepositoryDetails, path: Path):
         self.rd = rd
         self.path = path
+        self._context_files_cache = None
         self.pre_images: list[PreImage] = []
         with open(self.path / "mzbuild.yml") as f:
             data = yaml.safe_load(f)
@@ -1075,7 +1086,10 @@ class ResolvedImage:
             inputs: A list of input files, relative to the root of the
                 repository.
         """
-        paths = set(git.expand_globs(self.image.rd.root, f"{self.image.path}/**"))
+        if self.image._context_files_cache is not None:
+            paths = set(self.image._context_files_cache)
+        else:
+            paths = set(git.expand_globs(self.image.rd.root, f"{self.image.path}/**"))
         if not paths:
             # While we could find an `mzbuild.yml` file for this service, expland_globs didn't
             # return any files that matched this service. At the very least, the `mzbuild.yml`
@@ -1103,9 +1117,15 @@ class ResolvedImage:
         inputs via `PreImage.inputs`.
         """
         self_hash = hashlib.sha1()
-        for rel_path in sorted(
-            set(git.expand_globs(self.image.rd.root, *self.inputs()))
-        ):
+        # When inputs come from precomputed sources (crate and image context
+        # batching + resolved CargoPreImage paths), they are already individual
+        # file paths from git. Skip the expensive expand_globs subprocess calls.
+        inputs = self.inputs()
+        if self.image._context_files_cache is not None:
+            resolved_inputs = sorted(inputs)
+        else:
+            resolved_inputs = sorted(set(git.expand_globs(self.image.rd.root, *inputs)))
+        for rel_path in resolved_inputs:
             abs_path = self.image.rd.root / rel_path
             file_hash = hashlib.sha1()
             raw_file_mode = os.lstat(abs_path).st_mode
@@ -1495,6 +1515,13 @@ class Repository:
            ValueError: A circular dependency was discovered in the images
                in the repository.
         """
+        # Pre-fetch all crate input files in a single batched git call,
+        # replacing ~118 individual subprocess pairs with one pair.
+        self.rd.cargo_workspace.precompute_crate_inputs()
+        # Pre-fetch all image context files in a single batched git call,
+        # replacing ~41 individual subprocess pairs with one pair.
+        self._precompute_image_context_files()
+
         resolved = OrderedDict()
         visiting = set()
 
@@ -1514,6 +1541,48 @@ class Repository:
             visit(target_image)
 
         return DependencySet(resolved.values())
+
+    def _precompute_image_context_files(self) -> None:
+        """Pre-fetch all image context files in a single batched git call.
+
+        This replaces ~41 individual pairs of git subprocess calls (one per
+        image) with a single pair, then partitions the results by image path.
+        """
+        root = self.rd.root
+        # Use paths relative to root for git specs and partitioning, since
+        # git --relative outputs paths relative to cwd (root). Image paths
+        # may be absolute when MZ_ROOT is an absolute path.
+        image_rel_paths = sorted(
+            set(str(img.path.relative_to(root)) for img in self.images.values())
+        )
+        specs = [f"{p}/**" for p in image_rel_paths]
+
+        empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+        diff_files = spawn.capture(
+            ["git", "diff", "--name-only", "-z", "--relative", empty_tree, "--"]
+            + specs,
+            cwd=root,
+        )
+        ls_files = spawn.capture(
+            ["git", "ls-files", "--others", "--exclude-standard", "-z", "--"] + specs,
+            cwd=root,
+        )
+        all_files = set(
+            f for f in (diff_files + ls_files).split("\0") if f.strip() != ""
+        )
+
+        # Partition files by image path (longest match first for nested paths)
+        image_file_map: dict[str, set[str]] = {p: set() for p in image_rel_paths}
+        sorted_paths = sorted(image_rel_paths, key=len, reverse=True)
+        for f in all_files:
+            for ip in sorted_paths:
+                if f.startswith(ip + "/"):
+                    image_file_map[ip].add(f)
+                    break
+
+        for img in self.images.values():
+            rel = str(img.path.relative_to(root))
+            img._context_files_cache = image_file_map.get(rel, set())
 
     def __iter__(self) -> Iterator[Image]:
         return iter(self.images.values())
