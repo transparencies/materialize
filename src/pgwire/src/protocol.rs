@@ -273,12 +273,7 @@ where
                 }
                 Err(err) => {
                     warn!(?err, "pgwire connection failed authentication");
-                    return conn
-                        .send(ErrorResponse::fatal(
-                            SqlState::INVALID_PASSWORD,
-                            "invalid password",
-                        ))
-                        .await;
+                    return conn.send(err.into_response()).await;
                 }
             }
         }

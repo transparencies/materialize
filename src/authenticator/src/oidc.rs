@@ -20,10 +20,13 @@ use jsonwebtoken::jwk::JwkSet;
 use mz_adapter::Client as AdapterClient;
 use mz_adapter_types::dyncfgs::{OIDC_AUDIENCE, OIDC_ISSUER};
 use mz_auth::Authenticated;
+use mz_ore::soft_panic_or_log;
+use mz_pgwire_common::{ErrorResponse, Severity};
 use reqwest::Client as HttpClient;
 use serde::{Deserialize, Deserializer, Serialize};
+use tokio_postgres::error::SqlState;
 
-use tracing::warn;
+use tracing::{debug, warn};
 use url::Url;
 /// Errors that can occur during OIDC authentication.
 #[derive(Debug)]
@@ -31,41 +34,98 @@ pub enum OidcError {
     /// The issuer is missing.
     MissingIssuer,
     /// Failed to parse OIDC configuration URL.
-    InvalidIssuerUrl(url::ParseError),
-    /// Failed to fetch OpenID configuration from provider.
-    OpenIdConfigFetchFailed(String),
-    /// Failed to fetch JWKS from provider.
-    JwksFetchFailed(String),
+    InvalidIssuerUrl(String),
+    /// Failed to fetch from the identity provider.
+    FetchFromProviderFailed {
+        url: String,
+        error_message: String,
+    },
     /// The key ID is missing in the token header.
     MissingKid,
     /// No matching key found in JWKS.
-    NoMatchingKey,
-    /// JWT validation error from jsonwebtoken.
-    Jwt(jsonwebtoken::errors::Error),
-    /// User does not match expected value.
+    NoMatchingKey {
+        /// Key ID that was found in the JWT header.
+        key_id: String,
+    },
+    /// JWT validation error
+    Jwt,
     WrongUser,
+    InvalidAudience {
+        expected_audience: String,
+    },
+    InvalidIssuer {
+        expected_issuer: String,
+    },
+    ExpiredSignature,
 }
 
 impl std::fmt::Display for OidcError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OidcError::MissingIssuer => write!(f, "missing OIDC issuer URL"),
-            OidcError::InvalidIssuerUrl(e) => {
-                write!(f, "failed to parse OIDC issuer URL: {}", e)
+            OidcError::MissingIssuer => write!(f, "missing OIDC issuer"),
+            OidcError::InvalidIssuerUrl(_) => write!(f, "invalid OIDC issuer URL"),
+            OidcError::FetchFromProviderFailed { .. } => {
+                write!(f, "failed to fetch OIDC provider configuration")
             }
-            OidcError::OpenIdConfigFetchFailed(e) => {
-                write!(f, "failed to fetch OpenID configuration: {}", e)
-            }
-            OidcError::JwksFetchFailed(e) => write!(f, "failed to fetch JWKS: {}", e),
-            OidcError::MissingKid => write!(f, "missing key ID in token header"),
-            OidcError::NoMatchingKey => write!(f, "no matching key in JWKS"),
-            OidcError::Jwt(e) => write!(f, "JWT error: {}", e),
-            OidcError::WrongUser => write!(f, "user does not match expected value"),
+            OidcError::MissingKid => write!(f, "missing key ID in JWT header"),
+            OidcError::NoMatchingKey { .. } => write!(f, "no matching key found in JWKS"),
+            OidcError::Jwt => write!(f, "failed to validate JWT"),
+            OidcError::WrongUser => write!(f, "wrong user"),
+            OidcError::InvalidAudience { .. } => write!(f, "invalid audience"),
+            OidcError::InvalidIssuer { .. } => write!(f, "invalid issuer"),
+            OidcError::ExpiredSignature => write!(f, "authentication credentials have expired"),
         }
     }
 }
 
 impl std::error::Error for OidcError {}
+
+impl OidcError {
+    pub fn code(&self) -> SqlState {
+        SqlState::INVALID_AUTHORIZATION_SPECIFICATION
+    }
+
+    pub fn detail(&self) -> Option<String> {
+        match self {
+            OidcError::InvalidIssuerUrl(issuer) => {
+                Some(format!("Could not parse \"{issuer}\" as a URL."))
+            }
+            OidcError::FetchFromProviderFailed { url, error_message } => {
+                Some(format!("Fetching \"{url}\" failed. {error_message}"))
+            }
+            OidcError::NoMatchingKey { key_id } => {
+                Some(format!("JWT key ID \"{key_id}\" was not found."))
+            }
+            OidcError::InvalidAudience { expected_audience } => Some(format!(
+                "Expected audience \"{expected_audience}\" in the JWT.",
+            )),
+            OidcError::InvalidIssuer { expected_issuer } => {
+                Some(format!("Expected issuer \"{expected_issuer}\" in the JWT.",))
+            }
+            _ => None,
+        }
+    }
+
+    pub fn hint(&self) -> Option<String> {
+        match self {
+            OidcError::MissingIssuer => {
+                Some("Configure the OIDC issuer using the oidc_issuer system variable.".into())
+            }
+            _ => None,
+        }
+    }
+
+    pub fn into_response(self) -> ErrorResponse {
+        ErrorResponse {
+            severity: Severity::Fatal,
+            code: self.code(),
+            message: self.to_string(),
+            detail: self.detail(),
+            hint: self.hint(),
+            position: None,
+        }
+    }
+}
 
 fn deserialize_string_or_vec<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
 where
@@ -168,9 +228,10 @@ impl GenericOidcAuthenticator {
 
 impl GenericOidcAuthenticatorInner {
     async fn fetch_jwks_uri(&self, issuer: &str) -> Result<String, OidcError> {
-        let openid_config_url = Url::parse(issuer)
-            .and_then(|url| url.join(".well-known/openid-configuration"))
-            .map_err(OidcError::InvalidIssuerUrl)?;
+        let openid_config_url = Url::parse(&format!("{issuer}/.well-known/openid-configuration"))
+            .map_err(|_| OidcError::InvalidIssuerUrl(issuer.to_string()))?;
+
+        let openid_config_url_str = openid_config_url.to_string();
 
         // Fetch OpenID configuration to get the JWKS URI
         let response = self
@@ -179,19 +240,30 @@ impl GenericOidcAuthenticatorInner {
             .timeout(Duration::from_secs(10))
             .send()
             .await
-            .map_err(|e| OidcError::OpenIdConfigFetchFailed(e.to_string()))?;
+            .map_err(|e| OidcError::FetchFromProviderFailed {
+                url: openid_config_url_str.clone(),
+                error_message: e.to_string(),
+            })?;
 
         if !response.status().is_success() {
-            return Err(OidcError::OpenIdConfigFetchFailed(format!(
-                "HTTP {}",
-                response.status()
-            )));
+            return Err(OidcError::FetchFromProviderFailed {
+                url: openid_config_url_str.clone(),
+                error_message: response
+                    .error_for_status()
+                    .err()
+                    .map(|e| e.to_string())
+                    .unwrap_or_else(|| "Unknown error".to_string()),
+            });
         }
 
-        let openid_config: OpenIdConfiguration = response
-            .json()
-            .await
-            .map_err(|e| OidcError::OpenIdConfigFetchFailed(e.to_string()))?;
+        let openid_config: OpenIdConfiguration =
+            response
+                .json()
+                .await
+                .map_err(|e| OidcError::FetchFromProviderFailed {
+                    url: openid_config_url_str,
+                    error_message: e.to_string(),
+                })?;
 
         Ok(openid_config.jwks_uri)
     }
@@ -208,21 +280,33 @@ impl GenericOidcAuthenticatorInner {
             .timeout(Duration::from_secs(10))
             .send()
             .await
-            .map_err(|e| OidcError::JwksFetchFailed(e.to_string()))?;
+            .map_err(|e| OidcError::FetchFromProviderFailed {
+                url: jwks_uri.clone(),
+                error_message: e.to_string(),
+            })?;
 
         if !response.status().is_success() {
-            return Err(OidcError::JwksFetchFailed(format!(
-                "HTTP {}",
-                response.status()
-            )));
+            return Err(OidcError::FetchFromProviderFailed {
+                url: jwks_uri.clone(),
+                error_message: response
+                    .error_for_status()
+                    .err()
+                    .map(|e| e.to_string())
+                    .unwrap_or_else(|| "Unknown error".to_string()),
+            });
         }
 
-        let jwks: JwkSet = response
-            .json()
-            .await
-            .map_err(|e| OidcError::JwksFetchFailed(e.to_string()))?;
+        let jwks: JwkSet =
+            response
+                .json()
+                .await
+                .map_err(|e| OidcError::FetchFromProviderFailed {
+                    url: jwks_uri.clone(),
+                    error_message: e.to_string(),
+                })?;
 
         let mut keys = BTreeMap::new();
+
         for jwk in jwks.keys {
             match jsonwebtoken::DecodingKey::from_jwk(&jwk) {
                 Ok(key) => {
@@ -236,18 +320,13 @@ impl GenericOidcAuthenticatorInner {
             }
         }
 
-        if keys.is_empty() {
-            return Err(OidcError::JwksFetchFailed(
-                "no valid keys found in JWKS".to_string(),
-            ));
-        }
-
         Ok(keys)
     }
 
     /// Find a decoding key matching the given key ID.
     /// If the key is not found, fetch the JWKS and cache the keys.
     async fn find_key(&self, kid: &str, issuer: &str) -> Result<OidcDecodingKey, OidcError> {
+        // Get the cached decoding key.
         {
             let decoding_keys = self.decoding_keys.lock().expect("lock poisoned");
 
@@ -256,6 +335,7 @@ impl GenericOidcAuthenticatorInner {
             }
         }
 
+        // If not found, fetch the JWKS and cache the keys.
         let new_decoding_keys = self.fetch_jwks(issuer).await?;
 
         let decoding_key = new_decoding_keys.get(kid).cloned();
@@ -269,7 +349,15 @@ impl GenericOidcAuthenticatorInner {
             return Ok(key);
         }
 
-        Err(OidcError::NoMatchingKey)
+        {
+            let decoding_keys = self.decoding_keys.lock().expect("lock poisoned");
+            debug!(
+                "No matching key found in JWKS for key ID: {kid}. Available keys: {decoding_keys:?}."
+            );
+            Err(OidcError::NoMatchingKey {
+                key_id: kid.to_string(),
+            })
+        }
     }
 
     pub async fn validate_token(
@@ -287,27 +375,30 @@ impl GenericOidcAuthenticatorInner {
             let aud = OIDC_AUDIENCE.get(system_vars.dyncfgs());
             if aud.is_none() {
                 warn!(
-                    "Audience validation skipped. It is discouraged
-                    to skip audience validation since it allows
-                    anyone with a JWT issued by the same issuer
-                    to authenticate."
+                    "Audience validation skipped. It is discouraged \
+                    to skip audience validation since it allows anyone \
+                    with a JWT issued by the same issuer to authenticate."
                 );
             }
             aud
         };
 
-        // Decode header to get key ID (kid) and algorithm
-        let header = jsonwebtoken::decode_header(token).map_err(OidcError::Jwt)?;
+        // Decode header to get key ID (kid) and the
+        // decoding algorithm
+        let header = jsonwebtoken::decode_header(token).map_err(|e| {
+            debug!("Failed to decode JWT header: {:?}", e);
+            OidcError::Jwt
+        })?;
 
         let kid = header.kid.ok_or(OidcError::MissingKid)?;
-        // Find matching key from cached keys
+        // Find the matching key from our set of cached keys. If not found,
+        // fetch the JWKS from the provider and cache the keys
         let decoding_key = self.find_key(&kid, &issuer).await?;
 
-        // Set up validation
-        // TODO (Oidc): Make JWT expiration configurable.
+        // Set up audience and issuer validation
         let mut validation = jsonwebtoken::Validation::new(header.alg);
         validation.set_issuer(&[&issuer]);
-        if let Some(ref audience) = audience {
+        if let Some(audience) = &audience {
             validation.set_audience(&[audience]);
         } else {
             validation.validate_aud = false;
@@ -315,9 +406,27 @@ impl GenericOidcAuthenticatorInner {
 
         // Decode and validate the token
         let token_data = jsonwebtoken::decode::<OidcClaims>(token, &(decoding_key.0), &validation)
-            .map_err(OidcError::Jwt)?;
+            .map_err(|e| match e.kind() {
+                jsonwebtoken::errors::ErrorKind::InvalidAudience => {
+                    if let Some(audience) = &audience {
+                        OidcError::InvalidAudience {
+                            expected_audience: audience.clone(),
+                        }
+                    } else {
+                        soft_panic_or_log!(
+                            "received an audience validation error when audience validation is disabled"
+                        );
+                        OidcError::Jwt
+                    }
+                }
+                jsonwebtoken::errors::ErrorKind::InvalidIssuer => OidcError::InvalidIssuer {
+                    expected_issuer: issuer.clone(),
+                },
+                jsonwebtoken::errors::ErrorKind::ExpiredSignature => OidcError::ExpiredSignature,
+                _ => OidcError::Jwt,
+            })?;
 
-        // Optionally validate expected user
+        // Optionally validate the expected user
         if let Some(expected) = expected_user {
             if token_data.claims.username() != expected {
                 return Err(OidcError::WrongUser);

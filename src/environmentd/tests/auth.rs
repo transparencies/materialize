@@ -1317,6 +1317,7 @@ async fn test_auth_base_require_tls_oidc() {
     .unwrap();
 
     let oidc_user = "user@example.com";
+    let issuer = oidc_server.issuer.clone();
     let jwt_token = oidc_server.generate_jwt(
         oidc_user,
         GenerateJwtOptions {
@@ -1439,8 +1440,8 @@ async fn test_auth_base_require_tls_oidc() {
                 options: Some("--oidc_auth_enabled=true"),
                 configure: Box::new(|b| Ok(b.set_verify(SslVerifyMode::NONE))),
                 assert: Assert::DbErr(Box::new(|err| {
-                    assert_eq!(err.message(), "invalid password");
-                    assert_eq!(*err.code(), SqlState::INVALID_PASSWORD);
+                    assert_eq!(err.message(), "failed to validate JWT");
+                    assert_eq!(*err.code(), SqlState::INVALID_AUTHORIZATION_SPECIFICATION);
                 })),
             },
             // Expired JWT should fail.
@@ -1452,8 +1453,8 @@ async fn test_auth_base_require_tls_oidc() {
                 options: Some("--oidc_auth_enabled=true"),
                 configure: Box::new(|b| Ok(b.set_verify(SslVerifyMode::NONE))),
                 assert: Assert::DbErr(Box::new(|err| {
-                    assert_eq!(err.message(), "invalid password");
-                    assert_eq!(*err.code(), SqlState::INVALID_PASSWORD);
+                    assert_eq!(err.message(), "authentication credentials have expired");
+                    assert_eq!(*err.code(), SqlState::INVALID_AUTHORIZATION_SPECIFICATION);
                 })),
             },
             // JWT for wrong user should fail.
@@ -1465,8 +1466,8 @@ async fn test_auth_base_require_tls_oidc() {
                 options: Some("--oidc_auth_enabled=true"),
                 configure: Box::new(|b| Ok(b.set_verify(SslVerifyMode::NONE))),
                 assert: Assert::DbErr(Box::new(|err| {
-                    assert_eq!(err.message(), "invalid password");
-                    assert_eq!(*err.code(), SqlState::INVALID_PASSWORD);
+                    assert_eq!(err.message(), "wrong user");
+                    assert_eq!(*err.code(), SqlState::INVALID_AUTHORIZATION_SPECIFICATION);
                 })),
             },
             // JWT with wrong issuer should fail.
@@ -1478,8 +1479,12 @@ async fn test_auth_base_require_tls_oidc() {
                 options: Some("--oidc_auth_enabled=true"),
                 configure: Box::new(|b| Ok(b.set_verify(SslVerifyMode::NONE))),
                 assert: Assert::DbErr(Box::new(|err| {
-                    assert_eq!(err.message(), "invalid password");
-                    assert_eq!(*err.code(), SqlState::INVALID_PASSWORD);
+                    assert_eq!(err.message(), "invalid issuer");
+                    assert_eq!(*err.code(), SqlState::INVALID_AUTHORIZATION_SPECIFICATION);
+                    assert_contains!(
+                        err.detail().unwrap(),
+                        format!("Expected issuer \"{issuer}\" in the JWT.")
+                    );
                 })),
             },
         ],
@@ -1589,8 +1594,12 @@ async fn test_auth_oidc_audience_validation() {
                 options: Some("--oidc_auth_enabled=true"),
                 configure: Box::new(|b| Ok(b.set_verify(SslVerifyMode::NONE))),
                 assert: Assert::DbErr(Box::new(|err| {
-                    assert_eq!(err.message(), "invalid password");
-                    assert_eq!(*err.code(), SqlState::INVALID_PASSWORD);
+                    assert_eq!(err.message(), "invalid audience");
+                    assert_eq!(*err.code(), SqlState::INVALID_AUTHORIZATION_SPECIFICATION);
+                    assert_contains!(
+                        err.detail().unwrap(),
+                        format!("Expected audience \"{expected_audience}\" in the JWT.")
+                    );
                 })),
             },
             // JWT with no audience should fail when audience is required.
@@ -1602,8 +1611,8 @@ async fn test_auth_oidc_audience_validation() {
                 options: Some("--oidc_auth_enabled=true"),
                 configure: Box::new(|b| Ok(b.set_verify(SslVerifyMode::NONE))),
                 assert: Assert::DbErr(Box::new(|err| {
-                    assert_eq!(err.message(), "invalid password");
-                    assert_eq!(*err.code(), SqlState::INVALID_PASSWORD);
+                    assert_eq!(err.message(), "invalid audience");
+                    assert_eq!(*err.code(), SqlState::INVALID_AUTHORIZATION_SPECIFICATION);
                 })),
             },
         ],
@@ -1972,8 +1981,78 @@ async fn test_auth_oidc_issuer_validation() {
                 options: Some("--oidc_auth_enabled=true"),
                 configure: Box::new(|b| Ok(b.set_verify(SslVerifyMode::NONE))),
                 assert: Assert::DbErr(Box::new(|err| {
-                    assert_eq!(err.message(), "invalid password");
-                    assert_eq!(*err.code(), SqlState::INVALID_PASSWORD);
+                    assert_eq!(err.message(), "missing OIDC issuer");
+                    assert_eq!(*err.code(), SqlState::INVALID_AUTHORIZATION_SPECIFICATION);
+                    assert_eq!(
+                        err.hint(),
+                        Some("Configure the OIDC issuer using the oidc_issuer system variable.")
+                    );
+                })),
+            },
+        ],
+    )
+    .await;
+}
+
+/// Tests OIDC authentication when the issuer's JWKS endpoint is unreachable.
+///
+/// This verifies that when the issuer is configured and the JWT issuer matches,
+/// but the OIDC provider cannot be reached, authentication fails with an
+/// appropriate error.
+#[mz_ore::test(tokio::test(flavor = "multi_thread", worker_threads = 1))]
+#[cfg_attr(miri, ignore)]
+async fn test_auth_oidc_fetch_error() {
+    let ca = Ca::new_root("test ca").unwrap();
+    let (server_cert, server_key) = ca
+        .request_cert("server", vec![IpAddr::V4(Ipv4Addr::LOCALHOST)])
+        .unwrap();
+
+    let encoding_key = String::from_utf8(ca.pkey.private_key_to_pem_pkcs8().unwrap()).unwrap();
+    let kid = "test-key-1".to_string();
+    let oidc_server = OidcMockServer::start(
+        None,
+        encoding_key,
+        kid,
+        SYSTEM_TIME.clone(),
+        i64::try_from(EXPIRES_IN_SECS).unwrap(),
+    )
+    .await
+    .unwrap();
+
+    let oidc_user = "user@example.com";
+    let issuer = oidc_server.issuer.clone();
+    // Generate a JWT while the server is still up (correct issuer, valid signature).
+    let jwt_token = oidc_server.generate_jwt(
+        oidc_user,
+        GenerateJwtOptions {
+            ..Default::default()
+        },
+    );
+
+    // Stop the OIDC server so the JWKS endpoint becomes unreachable.
+    oidc_server.handle.abort_and_wait().await;
+
+    let server = test_util::TestHarness::default()
+        .with_tls(server_cert, server_key)
+        .with_oidc_auth(Some(issuer), None)
+        .start()
+        .await;
+
+    run_tests(
+        "OIDC Fetch Error",
+        &server,
+        &[
+            // The issuer matches but the OIDC server is down, so JWKS fetch fails.
+            TestCase::Pgwire {
+                user_to_auth_as: oidc_user,
+                user_reported_by_system: oidc_user,
+                password: Some(Cow::Borrowed(&jwt_token)),
+                ssl_mode: SslMode::Require,
+                options: Some("--oidc_auth_enabled=true"),
+                configure: Box::new(|b| Ok(b.set_verify(SslVerifyMode::NONE))),
+                assert: Assert::DbErr(Box::new(|err| {
+                    assert_eq!(err.message(), "failed to fetch OIDC provider configuration");
+                    assert_eq!(*err.code(), SqlState::INVALID_AUTHORIZATION_SPECIFICATION);
                 })),
             },
         ],
