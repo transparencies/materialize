@@ -36,11 +36,11 @@ use mz_sql::names::ResolvedDatabaseSpecifier;
 use mz_sql::plan::ConnectionDetails;
 use mz_sql::session::metadata::SessionMetadata;
 use mz_sql::session::vars::{
-    self, MAX_AWS_PRIVATELINK_CONNECTIONS, MAX_CLUSTERS, MAX_CONTINUAL_TASKS,
-    MAX_CREDIT_CONSUMPTION_RATE, MAX_DATABASES, MAX_KAFKA_CONNECTIONS, MAX_MATERIALIZED_VIEWS,
-    MAX_MYSQL_CONNECTIONS, MAX_NETWORK_POLICIES, MAX_OBJECTS_PER_SCHEMA, MAX_POSTGRES_CONNECTIONS,
-    MAX_REPLICAS_PER_CLUSTER, MAX_ROLES, MAX_SCHEMAS_PER_DATABASE, MAX_SECRETS, MAX_SINKS,
-    MAX_SOURCES, MAX_SQL_SERVER_CONNECTIONS, MAX_TABLES, SystemVars, Var,
+    self, DEFAULT_TIMESTAMP_INTERVAL, MAX_AWS_PRIVATELINK_CONNECTIONS, MAX_CLUSTERS,
+    MAX_CONTINUAL_TASKS, MAX_CREDIT_CONSUMPTION_RATE, MAX_DATABASES, MAX_KAFKA_CONNECTIONS,
+    MAX_MATERIALIZED_VIEWS, MAX_MYSQL_CONNECTIONS, MAX_NETWORK_POLICIES, MAX_OBJECTS_PER_SCHEMA,
+    MAX_POSTGRES_CONNECTIONS, MAX_REPLICAS_PER_CLUSTER, MAX_ROLES, MAX_SCHEMAS_PER_DATABASE,
+    MAX_SECRETS, MAX_SINKS, MAX_SOURCES, MAX_SQL_SERVER_CONNECTIONS, MAX_TABLES, SystemVars, Var,
 };
 use mz_storage_client::controller::{CollectionDescription, DataSource, ExportDescription};
 use mz_storage_types::connections::inline::IntoInlineConnection;
@@ -316,6 +316,7 @@ impl Coordinator {
         let mut update_secrets_caching_config = false;
         let mut update_cluster_scheduling_config = false;
         let mut update_http_config = false;
+        let mut update_advance_timelines_interval = false;
 
         for op in &ops {
             match op {
@@ -369,6 +370,7 @@ impl Coordinator {
                     update_secrets_caching_config |= vars::is_secrets_caching_var(name);
                     update_cluster_scheduling_config |= vars::is_cluster_scheduling_var(name);
                     update_http_config |= vars::is_http_config_var(name);
+                    update_advance_timelines_interval |= name == DEFAULT_TIMESTAMP_INTERVAL.name();
                 }
                 catalog::Op::ResetAllSystemConfiguration => {
                     // Assume they all need to be updated.
@@ -383,6 +385,7 @@ impl Coordinator {
                     update_secrets_caching_config = true;
                     update_cluster_scheduling_config = true;
                     update_http_config = true;
+                    update_advance_timelines_interval = true;
                 }
                 catalog::Op::RenameItem { id, .. } => {
                     let item = self.catalog().get_entry(id);
@@ -532,6 +535,12 @@ impl Coordinator {
             }
             if update_http_config {
                 self.update_http_config();
+            }
+            if update_advance_timelines_interval {
+                let new_interval = self.catalog().system_config().default_timestamp_interval();
+                if new_interval != self.advance_timelines_interval.period() {
+                    self.advance_timelines_interval = tokio::time::interval(new_interval);
+                }
             }
         }
         .instrument(info_span!("coord::catalog_transact_with::finalize"))
@@ -1243,6 +1252,7 @@ impl Coordinator {
                 },
                 Op::AlterRole { .. }
                 | Op::AlterRetainHistory { .. }
+                | Op::AlterSourceTimestampInterval { .. }
                 | Op::AlterNetworkPolicy { .. }
                 | Op::AlterAddColumn { .. }
                 | Op::AlterMaterializedViewApplyReplacement { .. }

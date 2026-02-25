@@ -151,18 +151,19 @@ use crate::plan::{
     AlterMaterializedViewApplyReplacementPlan, AlterNetworkPolicyPlan, AlterNoopPlan,
     AlterOptionParameter, AlterRetainHistoryPlan, AlterRolePlan, AlterSchemaRenamePlan,
     AlterSchemaSwapPlan, AlterSecretPlan, AlterSetClusterPlan, AlterSinkPlan,
-    AlterSystemResetAllPlan, AlterSystemResetPlan, AlterSystemSetPlan, AlterTablePlan,
-    ClusterSchedule, CommentPlan, ComputeReplicaConfig, ComputeReplicaIntrospectionConfig,
-    ConnectionDetails, CreateClusterManagedPlan, CreateClusterPlan, CreateClusterReplicaPlan,
-    CreateClusterUnmanagedPlan, CreateClusterVariant, CreateConnectionPlan,
-    CreateContinualTaskPlan, CreateDatabasePlan, CreateIndexPlan, CreateMaterializedViewPlan,
-    CreateNetworkPolicyPlan, CreateRolePlan, CreateSchemaPlan, CreateSecretPlan, CreateSinkPlan,
-    CreateSourcePlan, CreateTablePlan, CreateTypePlan, CreateViewPlan, DataSourceDesc,
-    DropObjectsPlan, DropOwnedPlan, HirRelationExpr, Index, MaterializedView, NetworkPolicyRule,
-    NetworkPolicyRuleAction, NetworkPolicyRuleDirection, Plan, PlanClusterOption, PlanNotice,
-    PolicyAddress, QueryContext, ReplicaConfig, Secret, Sink, Source, Table, TableDataSource, Type,
-    VariableValue, View, WebhookBodyFormat, WebhookHeaderFilters, WebhookHeaders,
-    WebhookValidation, literal, plan_utils, query, transform_ast,
+    AlterSourceTimestampIntervalPlan, AlterSystemResetAllPlan, AlterSystemResetPlan,
+    AlterSystemSetPlan, AlterTablePlan, ClusterSchedule, CommentPlan, ComputeReplicaConfig,
+    ComputeReplicaIntrospectionConfig, ConnectionDetails, CreateClusterManagedPlan,
+    CreateClusterPlan, CreateClusterReplicaPlan, CreateClusterUnmanagedPlan, CreateClusterVariant,
+    CreateConnectionPlan, CreateContinualTaskPlan, CreateDatabasePlan, CreateIndexPlan,
+    CreateMaterializedViewPlan, CreateNetworkPolicyPlan, CreateRolePlan, CreateSchemaPlan,
+    CreateSecretPlan, CreateSinkPlan, CreateSourcePlan, CreateTablePlan, CreateTypePlan,
+    CreateViewPlan, DataSourceDesc, DropObjectsPlan, DropOwnedPlan, HirRelationExpr, Index,
+    MaterializedView, NetworkPolicyRule, NetworkPolicyRuleAction, NetworkPolicyRuleDirection, Plan,
+    PlanClusterOption, PlanNotice, PolicyAddress, QueryContext, ReplicaConfig, Secret, Sink,
+    Source, Table, TableDataSource, Type, VariableValue, View, WebhookBodyFormat,
+    WebhookHeaderFilters, WebhookHeaders, WebhookValidation, literal, plan_utils, query,
+    transform_ast,
 };
 use crate::session::vars::{
     self, ENABLE_CLUSTER_SCHEDULE_REFRESH, ENABLE_COLLECTION_PARTITION_BY,
@@ -893,18 +894,23 @@ pub fn plan_create_source(
 
     let timestamp_interval = match timestamp_interval {
         Some(duration) => {
-            let min = scx.catalog.system_vars().min_timestamp_interval();
-            let max = scx.catalog.system_vars().max_timestamp_interval();
-            if duration < min || duration > max {
-                return Err(PlanError::InvalidTimestampInterval {
-                    min,
-                    max,
-                    requested: duration,
-                });
+            // Only validate bounds for new statements (pcx is Some), not during
+            // catalog deserialization (pcx is None). Previously persisted sources
+            // may have intervals that no longer fall within the current bounds.
+            if scx.pcx.is_some() {
+                let min = scx.catalog.system_vars().min_timestamp_interval();
+                let max = scx.catalog.system_vars().max_timestamp_interval();
+                if duration < min || duration > max {
+                    return Err(PlanError::InvalidTimestampInterval {
+                        min,
+                        max,
+                        requested: duration,
+                    });
+                }
             }
             duration
         }
-        None => scx.catalog.config().timestamp_interval,
+        None => scx.catalog.system_vars().default_timestamp_interval(),
     };
 
     let (desc, data_source) = match progress_subsource {
@@ -6965,6 +6971,74 @@ fn alter_retain_history(
     }
 }
 
+fn alter_source_timestamp_interval(
+    scx: &StatementContext,
+    if_exists: bool,
+    source_name: UnresolvedItemName,
+    value: Option<WithOptionValue<Aug>>,
+) -> Result<Plan, PlanError> {
+    let object_type = ObjectType::Source;
+    match resolve_item_or_type(scx, object_type, source_name.clone(), if_exists)? {
+        Some(entry) => {
+            let full_name = scx.catalog.resolve_full_name(entry.name());
+            if entry.item_type() != CatalogItemType::Source {
+                sql_bail!(
+                    "\"{}\" is a {} not a {}",
+                    full_name,
+                    entry.item_type(),
+                    format!("{object_type}").to_lowercase()
+                )
+            }
+
+            match value {
+                Some(val) => {
+                    let val = match val {
+                        WithOptionValue::Value(v) => v,
+                        _ => sql_bail!("TIMESTAMP INTERVAL requires an interval value"),
+                    };
+                    let duration = Duration::try_from_value(val.clone())?;
+
+                    let min = scx.catalog.system_vars().min_timestamp_interval();
+                    let max = scx.catalog.system_vars().max_timestamp_interval();
+                    if duration < min || duration > max {
+                        return Err(PlanError::InvalidTimestampInterval {
+                            min,
+                            max,
+                            requested: duration,
+                        });
+                    }
+
+                    Ok(Plan::AlterSourceTimestampInterval(
+                        AlterSourceTimestampIntervalPlan {
+                            id: entry.id(),
+                            value: Some(val),
+                            interval: duration,
+                        },
+                    ))
+                }
+                None => {
+                    let interval = scx.catalog.system_vars().default_timestamp_interval();
+                    Ok(Plan::AlterSourceTimestampInterval(
+                        AlterSourceTimestampIntervalPlan {
+                            id: entry.id(),
+                            value: None,
+                            interval,
+                        },
+                    ))
+                }
+            }
+        }
+        None => {
+            scx.catalog.add_notice(PlanNotice::ObjectDoesNotExist {
+                name: source_name.to_ast_string_simple(),
+                object_type,
+            });
+
+            Ok(Plan::AlterNoop(AlterNoopPlan { object_type }))
+        }
+    }
+}
+
 pub fn describe_alter_secret_options(
     _: &StatementContext,
     _: AlterSecretStatement<Aug>,
@@ -7309,6 +7383,12 @@ pub fn plan_alter_source(
                     option.value,
                 );
             }
+            if option.name == CreateSourceOptionName::TimestampInterval {
+                if options.next().is_some() {
+                    sql_bail!("TIMESTAMP INTERVAL must be only option");
+                }
+                return alter_source_timestamp_interval(scx, if_exists, source_name, option.value);
+            }
             // n.b we use this statement in purification in a way that cannot be
             // planned directly.
             sql_bail!(
@@ -7330,6 +7410,12 @@ pub fn plan_alter_source(
                     UnresolvedObjectName::Item(source_name),
                     None,
                 );
+            }
+            if option == CreateSourceOptionName::TimestampInterval {
+                if options.next().is_some() {
+                    sql_bail!("TIMESTAMP INTERVAL must be only option");
+                }
+                return alter_source_timestamp_interval(scx, if_exists, source_name, None);
             }
             sql_bail!(
                 "Cannot modify the {} of a SOURCE.",
