@@ -40,7 +40,6 @@
 //! (at the minimum timestamp) and send it again at the correct GTID.
 
 use std::collections::BTreeMap;
-use std::convert::Infallible;
 use std::num::NonZeroU64;
 use std::pin::pin;
 use std::sync::Arc;
@@ -109,7 +108,6 @@ pub(crate) fn render<G: Scope<Timestamp = GtidPartition>>(
     metrics: MySqlSourceMetrics,
 ) -> (
     StackedCollection<G, (usize, Result<SourceMessage, DataflowError>)>,
-    Stream<G, Infallible>,
     Stream<G, ReplicationError>,
     PressOnDropButton,
 ) {
@@ -118,7 +116,6 @@ pub(crate) fn render<G: Scope<Timestamp = GtidPartition>>(
 
     let repl_reader_id = u64::cast_from(config.responsible_worker(REPL_READER));
     let (mut data_output, data_stream) = builder.new_output::<AccountedStackBuilder<_>>();
-    let (_upper_output, upper_stream) = builder.new_output::<CapacityContainerBuilder<_>>();
     // Captures DefiniteErrors that affect the entire source, including all outputs
     let (definite_error_handle, definite_errors) =
         builder.new_output::<CapacityContainerBuilder<_>>();
@@ -139,8 +136,7 @@ pub(crate) fn render<G: Scope<Timestamp = GtidPartition>>(
         let busy_signal = Arc::clone(&config.busy_signal);
         Box::pin(SignaledFuture::new(busy_signal, async move {
             let (id, worker_id) = (config.id, config.worker_id);
-            let [data_cap_set, upper_cap_set, definite_error_cap_set]: &mut [_; 3] =
-                caps.try_into().unwrap();
+            let [data_cap_set, definite_error_cap_set]: &mut [_; 2] = caps.try_into().unwrap();
 
             // Only run the replication reader on the worker responsible for it.
             if !config.responsible_for(REPL_READER) {
@@ -255,7 +251,6 @@ pub(crate) fn render<G: Scope<Timestamp = GtidPartition>>(
             };
 
             data_cap_set.downgrade(&*resume_upper);
-            upper_cap_set.downgrade(&*resume_upper);
             trace!(%id, "timely-{worker_id} replication reader started at {:?}", resume_upper);
 
             let mut rewinds = BTreeMap::new();
@@ -323,7 +318,6 @@ pub(crate) fn render<G: Scope<Timestamp = GtidPartition>>(
                 &metrics,
                 &mut data_output,
                 data_cap_set,
-                upper_cap_set,
                 rewinds,
             );
 
@@ -387,9 +381,6 @@ pub(crate) fn render<G: Scope<Timestamp = GtidPartition>>(
                             )
                             .await);
                         }
-                        let new_upper = progress_partitions.frontier();
-                        repl_context.downgrade_progress_cap_set("xid_event", new_upper);
-
                         // Store the information of the active transaction for the subsequent events
                         active_tx = Some((source_id, tx_id));
                     }
@@ -474,12 +465,7 @@ pub(crate) fn render<G: Scope<Timestamp = GtidPartition>>(
 
     let errors = definite_errors.concat(&transient_errors.map(ReplicationError::from));
 
-    (
-        data_stream.as_collection(),
-        upper_stream,
-        errors,
-        button.press_on_drop(),
-    )
+    (data_stream.as_collection(), errors, button.press_on_drop())
 }
 
 /// Produces the replication stream from the MySQL server. This will return all transactions
