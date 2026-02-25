@@ -152,7 +152,10 @@ impl Context {
         Ok(())
     }
 
-    fn create_external_certificate_object(&self, balancer: &Balancer) -> Option<Certificate> {
+    fn create_external_certificate_object(
+        &self,
+        balancer: &Balancer,
+    ) -> Result<Option<Certificate>, anyhow::Error> {
         create_certificate(
             self.config
                 .default_certificate_specs
@@ -163,8 +166,8 @@ impl Context {
             balancer.external_certificate_name(),
             balancer.external_certificate_secret_name(),
             None,
-            CertificatePrivateKeyAlgorithm::Rsa,
-            Some(4096),
+            CertificatePrivateKeyAlgorithm::Ecdsa,
+            Some(256),
         )
     }
 
@@ -591,7 +594,7 @@ impl k8s_controller::Context for Context {
         let deployment_api: Api<Deployment> = Api::namespaced(client.clone(), &namespace);
         let service_api: Api<Service> = Api::namespaced(client.clone(), &namespace);
 
-        if let Some(external_certificate) = self.create_external_certificate_object(balancer) {
+        if let Some(external_certificate) = self.create_external_certificate_object(balancer)? {
             trace!("creating new balancerd external certificate");
             apply_resource(&certificate_api, &external_certificate).await?;
         }
