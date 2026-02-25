@@ -70,6 +70,27 @@ fn return_true() -> bool {
 }
 
 impl SqlColumnType {
+    /// Compute the least upper bound of many column types, returning an error on
+    /// incompatible types or an empty iterator.
+    /// See [`SqlColumnType::try_union`] for details.
+    pub fn try_union_many<'a>(
+        typs: impl IntoIterator<Item = &'a Self>,
+    ) -> Result<Self, anyhow::Error> {
+        let mut iter = typs.into_iter();
+        let Some(typ) = iter.next() else {
+            bail!("Cannot union empty iterator");
+        };
+        iter.try_fold(typ.clone(), |a, b| a.try_union(b))
+    }
+
+    /// Compute the least upper bound of many column types.
+    /// See [`SqlColumnType::try_union`] for details.
+    ///
+    /// Panics on incompatible types or an empty iterator.
+    pub fn union_many<'a>(typs: impl IntoIterator<Item = &'a Self>) -> Self {
+        Self::try_union_many(typs).expect("Cannot union empty iterator")
+    }
+
     /// Backports nullability information from `backport_typ` into `self`,
     /// affecting the outer `.nullable` field but also record fields deeper
     /// into the type.
@@ -79,11 +100,18 @@ impl SqlColumnType {
         self.nullable = backport_typ.nullable;
     }
 
-    /// Unions two [`SqlColumnType`]s.
+    /// Compute the least upper bound of two column types at the SQL level.
     ///
-    /// Will return an error if the underlying scalar types are SQL-incompatible,
-    /// e.g., unioning a `Text` and a `Int32`... or, more surprisingly, unioning
-    /// a `Text` and a `VarChar`.
+    /// Two types are compatible when they are equal, share the same base type
+    /// (differing only in modifiers), or are records with pairwise-compatible
+    /// fields.
+    /// The resulting nullability is the disjunction of the two input
+    /// nullabilities.
+    ///
+    /// Returns an error for incompatible types, e.g. `Text` and `Int32`, or
+    /// `Text` and `VarChar` (different base types at the SQL level).
+    /// See [`SqlColumnType::try_union`] for a fallback that handles the latter
+    /// case via repr-level union.
     pub fn sql_union(&self, other: &Self) -> Result<Self, anyhow::Error> {
         match (&self.scalar_type, &other.scalar_type) {
             (scalar_type, other_scalar_type) if scalar_type == other_scalar_type => {
@@ -152,6 +180,15 @@ impl SqlColumnType {
         }
     }
 
+    /// Compute the least upper bound of two column types.
+    ///
+    /// Attempts [`SqlColumnType::sql_union`] first, which preserves SQL-level type
+    /// information (e.g. modifiers). Falls back to a repr-level union via
+    /// [`ReprColumnType::union`] when the SQL types are incompatible but the
+    /// underlying repr types are compatible.
+    ///
+    /// The resulting nullability is the disjunction of the two input
+    /// nullabilities.
     pub fn try_union(&self, other: &Self) -> Result<Self, anyhow::Error> {
         self.sql_union(other).or_else(|e| {
             ::tracing::trace!("repr type error: sql_union({self:?}, {other:?}): {e}");
@@ -164,6 +201,10 @@ impl SqlColumnType {
         })
     }
 
+    /// Compute the least upper bound of two column types.
+    /// See [`SqlColumnType::try_union`] for details.
+    ///
+    /// Panics on incompatible types.
     pub fn union(&self, other: &Self) -> Self {
         self.try_union(other).unwrap_or_else(|e| {
             panic!("repr type error: after sql_union({self:?}, {other:?}) error: {e}")
@@ -457,6 +498,12 @@ pub struct ReprColumnType {
 }
 
 impl ReprColumnType {
+    /// Compute the least upper bound of two column types at the repr level.
+    ///
+    /// More permissive than [`SqlColumnType::sql_union`] because it operates
+    /// on the underlying representation types, ignoring SQL-level distinctions
+    /// such as modifiers.
+    /// The resulting nullability is the disjunction of the two inputs.
     pub fn union(&self, col: &ReprColumnType) -> Result<Self, anyhow::Error> {
         let scalar_type = self.scalar_type.union(&col.scalar_type)?;
         let nullable = self.nullable || col.nullable;
