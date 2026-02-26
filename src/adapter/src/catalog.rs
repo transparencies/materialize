@@ -1583,11 +1583,11 @@ impl ExprHumanizer for ConnCatalog<'_> {
         Some(self.resolve_full_name(entry.name()).into_parts())
     }
 
-    fn humanize_scalar_type(&self, typ: &SqlScalarType, postgres_compat: bool) -> String {
+    fn humanize_sql_scalar_type(&self, typ: &SqlScalarType, postgres_compat: bool) -> String {
         use SqlScalarType::*;
 
         match typ {
-            Array(t) => format!("{}[]", self.humanize_scalar_type(t, postgres_compat)),
+            Array(t) => format!("{}[]", self.humanize_sql_scalar_type(t, postgres_compat)),
             List {
                 custom_id: Some(item_id),
                 ..
@@ -1602,13 +1602,13 @@ impl ExprHumanizer for ConnCatalog<'_> {
             List { element_type, .. } => {
                 format!(
                     "{} list",
-                    self.humanize_scalar_type(element_type, postgres_compat)
+                    self.humanize_sql_scalar_type(element_type, postgres_compat)
                 )
             }
             Map { value_type, .. } => format!(
                 "map[{}=>{}]",
-                self.humanize_scalar_type(&SqlScalarType::String, postgres_compat),
-                self.humanize_scalar_type(value_type, postgres_compat)
+                self.humanize_sql_scalar_type(&SqlScalarType::String, postgres_compat),
+                self.humanize_sql_scalar_type(value_type, postgres_compat)
             ),
             Record {
                 custom_id: Some(item_id),
@@ -1624,7 +1624,7 @@ impl ExprHumanizer for ConnCatalog<'_> {
                     .map(|f| format!(
                         "{}: {}",
                         f.0,
-                        self.humanize_column_type(&f.1, postgres_compat)
+                        self.humanize_sql_column_type(&f.1, postgres_compat)
                     ))
                     .join(",")
             ),
@@ -3375,13 +3375,13 @@ mod tests {
                         // we get from the catalog.
                         soft_assert_eq_or_log!(
                             mir_typ.scalar_type,
-                            return_styp,
+                            (&return_styp).into(),
                             "MIR type did not match the catalog type (cast elimination/repr type error)"
                         );
                         // The following will check not just that the scalar type
                         // is ok, but also catches if the function returned a null
                         // but the MIR type inference said "non-nullable".
-                        if !eval_result_datum.is_instance_of_sql(&mir_typ) {
+                        if !eval_result_datum.is_instance_of(&mir_typ) {
                             panic!(
                                 "{call_name}: expected return type of {return_styp:?}, got {eval_result_datum}"
                             );
