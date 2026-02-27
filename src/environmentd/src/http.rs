@@ -113,7 +113,8 @@ pub struct HttpConfig {
     pub source: &'static str,
     pub tls: Option<ReloadingSslContext>,
     pub authenticator_kind: AuthenticatorKind,
-    pub authenticator_rx: Shared<Receiver<Arc<Authenticator>>>,
+    pub frontegg: Option<mz_frontegg_auth::Authenticator>,
+    pub oidc_rx: Delayed<mz_authenticator::GenericOidcAuthenticator>,
     pub adapter_client_rx: Shared<Receiver<Client>>,
     pub allowed_origin: AllowOrigin,
     pub active_connection_counter: ConnectionCounter,
@@ -136,7 +137,9 @@ pub struct InternalRouteConfig {
 
 #[derive(Clone)]
 pub struct WsState {
-    authenticator_rx: Delayed<Arc<Authenticator>>,
+    frontegg: Option<mz_frontegg_auth::Authenticator>,
+    oidc_rx: Delayed<mz_authenticator::GenericOidcAuthenticator>,
+    authenticator_kind: AuthenticatorKind,
     adapter_client_rx: Delayed<mz_adapter::Client>,
     active_connection_counter: ConnectionCounter,
     helm_chart_version: Option<String>,
@@ -161,7 +164,8 @@ impl HttpServer {
             source,
             tls,
             authenticator_kind,
-            authenticator_rx,
+            frontegg,
+            oidc_rx,
             adapter_client_rx,
             allowed_origin,
             active_connection_counter,
@@ -187,14 +191,25 @@ impl HttpServer {
             .with_name("mz_session") // Custom cookie name
             .with_path("/"); // Set cookie path
 
-        let auth_middleware_authenticator_rx = authenticator_rx.clone();
+        let frontegg_middleware = frontegg.clone();
+        let oidc_middleware_rx = oidc_rx.clone();
+        let adapter_client_middleware_rx = adapter_client_rx.clone();
         let auth_middleware = middleware::from_fn(move |req, next| {
-            let authenticator_rx = auth_middleware_authenticator_rx.clone();
+            let frontegg = frontegg_middleware.clone();
+            let oidc_rx = oidc_middleware_rx.clone();
+            let adapter_client_rx = adapter_client_middleware_rx.clone();
             async move {
-                let authenticator = authenticator_rx
-                    .await
-                    .expect("sender not dropped before sending once");
-                http_auth(req, next, tls_enabled, authenticator, allowed_roles).await
+                http_auth(
+                    req,
+                    next,
+                    tls_enabled,
+                    authenticator_kind,
+                    frontegg,
+                    oidc_rx,
+                    adapter_client_rx,
+                    allowed_roles,
+                )
+                .await
             }
         });
 
@@ -221,7 +236,9 @@ impl HttpServer {
             let mut ws_router = Router::new()
                 .route("/api/experimental/sql", routing::get(sql::handle_sql_ws))
                 .with_state(WsState {
-                    authenticator_rx: authenticator_rx.clone(),
+                    frontegg,
+                    oidc_rx: oidc_rx.clone(),
+                    authenticator_kind,
                     adapter_client_rx: adapter_client_rx.clone(),
                     active_connection_counter: active_connection_counter.clone(),
                     helm_chart_version,
@@ -461,7 +478,7 @@ impl HttpServer {
             );
 
         match authenticator_kind {
-            AuthenticatorKind::Password => {
+            AuthenticatorKind::Password | AuthenticatorKind::Oidc => {
                 base_router = base_router.layer(session_layer.clone());
 
                 let login_router = Router::new()
@@ -845,7 +862,10 @@ async fn http_auth(
     mut req: Request,
     next: Next,
     tls_enabled: bool,
-    authenticator: Arc<Authenticator>,
+    authenticator_kind: AuthenticatorKind,
+    frontegg: Option<mz_frontegg_auth::Authenticator>,
+    oidc_rx: Delayed<mz_authenticator::GenericOidcAuthenticator>,
+    adapter_client_rx: Delayed<Client>,
     allowed_roles: AllowedRoles,
 ) -> impl IntoResponse + use<> {
     // First check for session authentication
@@ -919,6 +939,15 @@ async fn http_auth(
         || PROFILING_API_ENDPOINTS
             .iter()
             .any(|prefix| path.starts_with(prefix));
+    let authenticator = get_authenticator(
+        authenticator_kind,
+        creds.as_ref(),
+        frontegg,
+        &oidc_rx,
+        &adapter_client_rx,
+    )
+    .await;
+
     let user = auth(
         &authenticator,
         creds,
@@ -937,17 +966,18 @@ async fn http_auth(
 
 async fn init_ws(
     WsState {
-        authenticator_rx,
+        frontegg,
+        oidc_rx,
+        authenticator_kind,
         adapter_client_rx,
         active_connection_counter,
         helm_chart_version,
         allowed_roles,
-    }: &WsState,
+    }: WsState,
     existing_user: Option<AuthedUser>,
     peer_addr: IpAddr,
     ws: &mut WebSocket,
 ) -> Result<AuthedClient, anyhow::Error> {
-    let authenticator = authenticator_rx.clone().await.expect("sender not dropped");
     // TODO: Add a timeout here to prevent resource leaks by clients that
     // connect then never send a message.
     let ws_auth: WebSocketAuth = loop {
@@ -997,7 +1027,15 @@ async fn init_ws(
                 anyhow::bail!("expected auth information");
             }
         };
-        let user = auth(&authenticator, Some(creds), *allowed_roles, false).await?;
+        let authenticator = get_authenticator(
+            authenticator_kind,
+            Some(&creds),
+            frontegg,
+            &oidc_rx,
+            &adapter_client_rx,
+        )
+        .await;
+        let user = auth(&authenticator, Some(creds), allowed_roles, false).await?;
         (user, options)
     };
 
@@ -1024,6 +1062,33 @@ enum Credentials {
     Token {
         token: String,
     },
+}
+
+async fn get_authenticator(
+    kind: AuthenticatorKind,
+    creds: Option<&Credentials>,
+    frontegg: Option<mz_frontegg_auth::Authenticator>,
+    oidc_rx: &Delayed<mz_authenticator::GenericOidcAuthenticator>,
+    adapter_client_rx: &Delayed<Client>,
+) -> Authenticator {
+    match kind {
+        AuthenticatorKind::Frontegg => Authenticator::Frontegg(
+            frontegg.expect("Frontegg authenticator should exist with AuthenticatorKind::Frontegg"),
+        ),
+        AuthenticatorKind::Password | AuthenticatorKind::Sasl => {
+            let client = adapter_client_rx.clone().await.expect("sender not dropped");
+            Authenticator::Password(client)
+        }
+        AuthenticatorKind::Oidc => match creds {
+            // Use the password authenticator if the credentials are password-based
+            Some(Credentials::Password { .. }) => {
+                let client = adapter_client_rx.clone().await.expect("sender not dropped");
+                Authenticator::Password(client)
+            }
+            _ => Authenticator::Oidc(oidc_rx.clone().await.expect("sender not dropped")),
+        },
+        AuthenticatorKind::None => Authenticator::None,
+    }
 }
 
 async fn auth(
@@ -1077,8 +1142,6 @@ async fn auth(
                 include_www_authenticate_header,
             });
         }
-        // TODO (Oidc): Implement password auth flow
-        // for this authenticator variant.
         Authenticator::Oidc(oidc) => match creds {
             Some(Credentials::Token { token }) => {
                 // Validate JWT token
@@ -1089,16 +1152,7 @@ async fn auth(
                 let name = claims.username().to_string();
                 (name, None, authenticated)
             }
-            Some(Credentials::Password { username, password }) => {
-                // Allow JWT to be passed as password
-                let (claims, authenticated) = oidc
-                    .authenticate(&password.0, Some(&username))
-                    .await
-                    .map_err(|_| AuthError::InvalidCredentials)?;
-                let name = claims.username().to_string();
-                (name, None, authenticated)
-            }
-            None => {
+            _ => {
                 return Err(AuthError::MissingHttpAuthentication {
                     include_www_authenticate_header,
                 });

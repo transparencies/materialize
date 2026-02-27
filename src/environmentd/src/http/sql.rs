@@ -322,7 +322,7 @@ pub async fn handle_sql_ws(
     let addr = Box::new(addr.ip());
     Ok(ws
         .max_message_size(MAX_REQUEST_SIZE)
-        .on_upgrade(|ws| async move { run_ws(&state, user, *addr, ws).await }))
+        .on_upgrade(|ws| async move { run_ws(state, user, *addr, ws).await }))
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -345,7 +345,7 @@ pub enum WebSocketAuth {
     },
 }
 
-async fn run_ws(state: &WsState, user: Option<AuthedUser>, peer_addr: IpAddr, mut ws: WebSocket) {
+async fn run_ws(state: WsState, user: Option<AuthedUser>, peer_addr: IpAddr, mut ws: WebSocket) {
     let mut client = match init_ws(state, user, peer_addr, &mut ws).await {
         Ok(client) => client,
         Err(e) => {
