@@ -15,6 +15,62 @@ Starting with the v26.1.0 release, Materialize releases on a weekly schedule for
 both Cloud and Self-Managed. See [Release schedule](/releases/schedule) for details.
 {{</ note >}}
 
+## v26.13.0
+*Released to Materialize Cloud: 2026-02-26* <br>
+*Released to Materialize Self-Managed: 2026-02-27* <br>
+
+This release includes the release of our Iceberg Sink, performance improvements to `SUBSCRIBE`, and bugfixes.
+
+### Iceberg Sink
+{{< public-preview />}}
+Iceberg sinks provide exactly once delivery of updates from Materialize into [Apache
+Iceberg](https://iceberg.apache.org/) tables hosted on [Amazon S3
+Tables](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables.html).
+As data changes in Materialize, the corresponding Iceberg tables are
+automatically kept up to date. You can sink data from a materialized view, a
+source, or a table.
+
+```mzsql
+CREATE SINK my_iceberg_sink
+  IN CLUSTER sink_cluster
+  FROM materialized_view_mv1
+  INTO ICEBERG CATALOG CONNECTION iceberg_catalog_connection (
+    NAMESPACE = 'my_iceberg_namespace',
+    TABLE = 'mv1'
+  )
+  USING AWS CONNECTION aws_connection
+  KEY (row_id)
+  MODE UPSERT
+  WITH (COMMIT INTERVAL = '60s');
+```
+
+For more information, refer to:
+- [Guide: How to export results from Materialize to Apache Iceberg Tables](/serve-results/sink/iceberg)
+- [Blog: Making Iceberg work for Operational Data](https://materialize.com/blog/making-iceberg-work-for-operational-data/)
+- [Syntax: CREATE SINK... INTO ICEBERG ](/sql/create-sink/iceberg)
+
+### Improvements
+- **Improved `SUBSCRIBE` Performance**: We've optimized `SUBSCRIBE` to skip initial snapshots in more cases. This can speed up `SUBSCRIBE` start times.
+- **Improved delta join performance**: We now consolidate updates before invoking join closures, improving the peformance of delta joins when indexes have large amounts of retained history.
+- **Improved compatibility with external tools**: We've added `strpos` as a synonym for the `position` function, improving compatibility with tools such as PowerBI.
+
+### Bug Fixes
+- Fixed a panic when constructing multi-dimensional arrays with null values,
+  now treating null elements as zero-dimensional arrays consistent with
+  PostgreSQL behavior.
+- Fixed a concurrency issue (futurelock) in persist that could cause data flow
+  stalls when multiple writers competed for update leases.
+- Fixed a bug where dropping a replacement materialized view (instead of
+  applying the replacement) could seal the target materialized view for all
+  times after an environmentd restart.
+- Fixed a bug where `Int2Vector` to `Array` casting did not correctly handle
+  element type conversions, potentially causing incorrect results or errors.
+- Fixed the memory-based calculation of replica size credits, which was
+  incorrectly multiplying by the number of workers instead of using the correct
+  per-process memory limit.
+- Fixed an overflow display issue on the roles page in the console.
+- Fixed SSO connection configuration pages in the console, which did not load properly due to missing content security policy entries.
+
 ## v26.12.0
 *Released to Materialize Cloud: 2026-02-19* <br>
 *Released to Materialize Self-Managed: 2026-02-20* <br>
