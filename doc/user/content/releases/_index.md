@@ -51,7 +51,6 @@ For more information, refer to:
 
 ### Improvements
 - **Improved `SUBSCRIBE` Performance**: We've optimized `SUBSCRIBE` to skip initial snapshots in more cases. This can speed up `SUBSCRIBE` start times.
-- **Improved delta join performance**: We now consolidate updates before invoking join closures, improving the peformance of delta joins when indexes have large amounts of retained history.
 - **Improved compatibility with external tools**: We've added `strpos` as a synonym for the `position` function, improving compatibility with tools such as PowerBI.
 
 ### Bug Fixes
@@ -65,9 +64,9 @@ For more information, refer to:
   times after an environmentd restart.
 - Fixed a bug where `Int2Vector` to `Array` casting did not correctly handle
   element type conversions, potentially causing incorrect results or errors.
-- Fixed the memory-based calculation of replica size credits, which was
-  incorrectly multiplying by the number of workers instead of using the correct
-  per-process memory limit.
+- Fixed the Self-Managed bug in the memory-based calculation of replica size
+  credits, which was incorrectly multiplying by the number of workers instead of
+  using the correct per-process memory limit.
 - Fixed an overflow display issue on the roles page in the console.
 - Fixed SSO connection configuration pages in the console, which did not load properly due to missing content security policy entries.
 
