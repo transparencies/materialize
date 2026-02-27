@@ -334,7 +334,7 @@ impl Client {
             // formats nicely in both `psql` and the console's SQL shell.
             session.add_notice(AdapterNotice::Welcome(format!(
                 "connected to Materialize v{}
-  Org ID: {}
+  Environment ID: {}
   Region: {}
   User: {}
   Cluster: {}
@@ -347,7 +347,7 @@ Issue a SQL query to get started. Need help?
   Join our Slack community: https://materialize.com/s/chat
     ",
                 session.vars().build_info().semver_version(),
-                self.environment_id.organization_id(),
+                self.environment_id,
                 self.environment_id.region(),
                 session.vars().user().name,
                 cluster_info,
