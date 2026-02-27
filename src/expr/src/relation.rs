@@ -467,7 +467,7 @@ impl MirRelationExpr {
             FlatMap { func, .. } => {
                 let mut result = input_types.next().unwrap().clone();
                 result.extend(
-                    func.output_type()
+                    func.output_sql_type()
                         .column_types
                         .iter()
                         .map(ReprColumnType::from),
@@ -1256,13 +1256,13 @@ impl MirRelationExpr {
     /// # Example
     ///
     /// ```rust
-    /// use mz_repr::{Datum, SqlColumnType, SqlRelationType, SqlScalarType};
+    /// use mz_repr::{Datum, SqlColumnType, ReprRelationType, ReprScalarType};
     /// use mz_expr::MirRelationExpr;
     ///
     /// // A common schema for each input.
-    /// let schema = SqlRelationType::new(vec![
-    ///     SqlScalarType::Int32.nullable(false),
-    ///     SqlScalarType::Int32.nullable(false),
+    /// let schema = ReprRelationType::new(vec![
+    ///     ReprScalarType::Int32.nullable(false),
+    ///     ReprScalarType::Int32.nullable(false),
     /// ]);
     ///
     /// // the specific data are not important here.
@@ -1519,16 +1519,16 @@ impl MirRelationExpr {
     /// the correct type.
     pub fn take_safely(&mut self, typ: Option<ReprRelationType>) -> MirRelationExpr {
         if let Some(typ) = &typ {
-            let self_typ = self.sql_typ();
+            let self_typ = self.typ();
             soft_assert_no_log!(
                 self_typ
                     .column_types
                     .iter()
                     .zip_eq(typ.column_types.iter())
-                    .all(|(t1, t2)| ReprScalarType::from(&t1.scalar_type) == t2.scalar_type)
+                    .all(|(t1, t2)| t1.scalar_type == t2.scalar_type)
             );
         }
-        let mut typ = typ.unwrap_or_else(|| ReprRelationType::from(&self.sql_typ()));
+        let mut typ = typ.unwrap_or_else(|| self.typ());
         typ.keys = vec![vec![]];
         for ct in typ.column_types.iter_mut() {
             ct.nullable = false;
@@ -2478,16 +2478,12 @@ pub struct AggregateExpr {
 impl AggregateExpr {
     /// Computes the type of this `AggregateExpr`.
     pub fn sql_typ(&self, column_types: &[SqlColumnType]) -> SqlColumnType {
-        self.func.output_type(self.expr.sql_typ(column_types))
+        self.func.output_sql_type(self.expr.sql_typ(column_types))
     }
 
     /// Computes the type of this `AggregateExpr`.
     pub fn typ(&self, column_types: &[ReprColumnType]) -> ReprColumnType {
-        ReprColumnType::from(
-            &self
-                .func
-                .output_type(SqlColumnType::from_repr(&self.expr.typ(column_types))),
-        )
+        self.func.output_type(self.expr.typ(column_types))
     }
 
     /// Returns whether the expression has a constant result.
